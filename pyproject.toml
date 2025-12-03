@@ -1,0 +1,111 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nicewidgets"
+version = "0.1.0"
+description = "Reusable NiceGUI widgets including AG Grid wrappers and ROI image tools."
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.11"
+
+# Keep this in sync with whatever license file you actually add.
+license = { file = "LICENSE" }
+
+authors = [
+    { name = "Robert H. Cudmore", email = "robert.cudmore@gmail.com" },
+]
+
+keywords = [
+    "nicegui",
+    "widgets",
+    "aggrid",
+    "image-analysis",
+    "gui",
+    "webgui",
+]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+# --- Core runtime deps (minimal) ---
+dependencies = [
+    "nicegui>=3.3.1",
+    "psygnal>=0.14.2",
+]
+
+[project.optional-dependencies]
+# Optional numeric/tabular backends
+pandas = ["pandas>=2.3.3"]
+polars = ["polars>=0.20.0"]
+
+# Testing, docs, dev tooling (you can extend these later)
+test = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1.0",
+]
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+    "mkdocstrings[python]>=0.23.0",
+]
+dev = [
+    "pre-commit",
+    "black",
+    "ruff",
+]
+
+# --- uv dependency groups (kept roughly in sync with extras) ---
+[dependency-groups]
+pandas = ["pandas>=2.3.3"]
+polars = ["polars>=0.20.0"]
+test = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1.0",
+]
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+    "mkdocstrings[python]>=0.23.0",
+]
+dev = [
+    "pre-commit",
+    "black",
+    "ruff",
+]
+
+[tool.hatch.build]
+sources = ["src"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nicewidgets"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "requires_nicegui: tests that need NiceGUI UI context",
+]
+
+[project.urls]
+Homepage = "https://github.com/mapmanager/nicewidgets"
+Repository = "https://github.com/mapmanager/nicewidgets"
+Issues = "https://github.com/mapmanager/nicewidgets/issues"
+Documentation = "https://github.com/mapmanager/nicewidgets#readme"
