@@ -182,6 +182,7 @@ class RoiImageWidget:
         # Panning state
         self._last_pan_x_full: float | None = None
         self._last_pan_y_full: float | None = None
+        self._pan_viewport_orig: dict | None = None  # snapshot at pan start, fix jitter
 
         # Container / interactive image
         container = parent if parent is not None else ui.element("div").classes("w-full")
@@ -468,16 +469,29 @@ class RoiImageWidget:
         self.mouse_moved_full.emit(x_full, y_full)
 
         # ---------- MOUSEDOWN (start drawing / moving / resizing / panning) ----------
+        # if e.type == "mousedown" and e.button == 0:
+        #     # Panning if enabled and modifier pressed
+        #     if self.config.enable_panning and self.config.pan_modifier == "shift" and e.shift:
+        #         self._mode = "panning"
+        #         self._start_x_full = x_full
+        #         self._start_y_full = y_full
+        #         self._last_pan_x_full = x_full
+        #         self._last_pan_y_full = y_full
+        #         return
+
         if e.type == "mousedown" and e.button == 0:
-            # Panning if enabled and modifier pressed
+            # Panning if enabled and modifier pressed (anchored to pan start)
             if self.config.enable_panning and self.config.pan_modifier == "shift" and e.shift:
                 self._mode = "panning"
                 self._start_x_full = x_full
                 self._start_y_full = y_full
-                self._last_pan_x_full = x_full
+                self._last_pan_x_full = x_full  # kept for possible future use
                 self._last_pan_y_full = y_full
+                # Snapshot the viewport at the start of the pan gesture
+                self._pan_viewport_orig = self.viewport.to_dict()
                 return
 
+            #
             roi_id, mode = self._hit_test(x_full, y_full)
 
             if roi_id is not None and mode is not None:
@@ -515,15 +529,45 @@ class RoiImageWidget:
             return
 
         # ---------- MOUSEMOVE with left button held ----------
+        # if e.type == "mousemove" and (e.buttons & 1):
+        #     # Panning
+        #     if self._mode == "panning":
+        #         if self._last_pan_x_full is not None and self._last_pan_y_full is not None:
+        #             dx = x_full - self._last_pan_x_full
+        #             dy = y_full - self._last_pan_y_full
+        #             self.viewport.pan(dx, dy)
+        #             self._last_pan_x_full = x_full
+        #             self._last_pan_y_full = y_full
+        #             self.viewport_changed.emit(self.viewport.to_dict())
+        #             self._update_image()
+        #         return
+
         if e.type == "mousemove" and (e.buttons & 1):
-            # Panning
+            # Panning (anchored to pan start)
             if self._mode == "panning":
-                if self._last_pan_x_full is not None and self._last_pan_y_full is not None:
-                    dx = x_full - self._last_pan_x_full
-                    dy = y_full - self._last_pan_y_full
-                    self.viewport.pan(dx, dy)
+                if (
+                    self._start_x_full is not None
+                    and self._start_y_full is not None
+                    and self._pan_viewport_orig is not None
+                ):
+                    # Total delta from the start of the pan gesture
+                    dx_total = x_full - self._start_x_full
+                    dy_total = y_full - self._start_y_full
+
+                    # Reset viewport to the original snapshot, then pan once
+                    vp = self.viewport
+                    orig = self._pan_viewport_orig
+                    vp.x_min = float(orig["x_min"])
+                    vp.x_max = float(orig["x_max"])
+                    vp.y_min = float(orig["y_min"])
+                    vp.y_max = float(orig["y_max"])
+
+                    vp.pan(dx_total, dy_total)
+
+                    # Optional: update these if you want them for debugging
                     self._last_pan_x_full = x_full
                     self._last_pan_y_full = y_full
+
                     self.viewport_changed.emit(self.viewport.to_dict())
                     self._update_image()
                 return
@@ -604,6 +648,7 @@ class RoiImageWidget:
                 self._start_y_full = None
                 self._last_pan_x_full = None
                 self._last_pan_y_full = None
+                self._pan_viewport_orig = None
                 return
 
             if self._mode == "drawing" and self._selected_id is not None:
