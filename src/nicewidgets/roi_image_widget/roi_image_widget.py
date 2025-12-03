@@ -67,7 +67,10 @@ class RoiImageConfig:
     enable_panning: bool = True
     pan_modifier: str = "shift"             # currently only "shift" supported
 
-    # image around border
+    # Display resolution (logical pixel grid)
+    display_width_px: int | None = None
+    display_height_px: int | None = None
+        # image around border
     image_border_width: int = 0         # in pixels
     
 def array_to_pil(
@@ -142,20 +145,37 @@ class RoiImageWidget:
 
         self.img_height, self.img_width = self.image.shape
 
+        # Configuration: either provided or default, then override some fields
+        if config is None:
+            self.config = RoiImageConfig()
+        else:
+            self.config = config
+
         # Fixed display size; can later be made configurable
-        self.DISPLAY_W = self.img_width
-        self.DISPLAY_H = self.img_height
+        # self.DISPLAY_W = self.img_width
+        # self.DISPLAY_H = self.img_height
+
+        # Logical display size: default to image size, but allow override via config
+        if self.config.display_width_px is not None:
+            self.DISPLAY_W = int(self.config.display_width_px)
+        else:
+            self.DISPLAY_W = self.img_width
+
+        if self.config.display_height_px is not None:
+            self.DISPLAY_H = int(self.config.display_height_px)
+        else:
+            self.DISPLAY_H = self.img_height
 
         # Contrast / colormap
         self._vmin = float(vmin) if vmin is not None else float(np.nanmin(self.image))
         self._vmax = float(vmax) if vmax is not None else float(np.nanmax(self.image))
         self._cmap = cmap
 
-        # Configuration: either provided or default, then override some fields
-        if config is None:
-            self.config = RoiImageConfig()
-        else:
-            self.config = config
+        # # Configuration: either provided or default, then override some fields
+        # if config is None:
+        #     self.config = RoiImageConfig()
+        # else:
+        #     self.config = config
 
         # Viewport
         self.viewport = Viewport(

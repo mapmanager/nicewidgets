@@ -61,6 +61,21 @@ if __name__ in {"__main__", "__mp_main__"}:
     # img = create_demo_image()
     img = create_checkerboard_image()
 
+    """
+    And layout-wise, you can still use normal Tailwind stuff:
+
+        .classes("w-full") → width tracks the column width.
+
+        If you want to constrain height further, you could wrap it in a container with Tailwind like h-96 or max-h-[400px] — the aspect-ratio will still try to enforce the DISPLAY_W/H ratio, so the exact behavior will depend on how you combine those, but the logical mapping won’t break.
+
+    So the mental model becomes:
+
+        Visual size ≈ container width × aspect-ratio, where aspect-ratio = DISPLAY_W/DISPLAY_H you chose.
+
+        Logical pixel grid = DISPLAY_W × DISPLAY_H you chose.
+        This is what all zoom/pan/ROI math uses.
+    """
+
     with ui.row().classes("w-full gap-6"):
         with ui.column().classes("items-start gap-2 w-3/4"):
             ui.label("RoiImageWidget demo").classes("text-lg font-bold")
@@ -69,6 +84,8 @@ if __name__ in {"__main__", "__mp_main__"}:
                 wheel_default_axis="x",
                 wheel_shift_axis=None,
                 wheel_ctrl_axis="y",
+                # display_width_px=1000,
+                display_height_px=400,
             )
 
             widget = RoiImageWidget(
@@ -76,9 +93,6 @@ if __name__ in {"__main__", "__mp_main__"}:
                 rois=[
                     {"id": "roi-1", "left": 20, "top": 10, "right": 80, "bottom": 50},
                 ],
-                # wheel_default_axis="both",
-                # wheel_shift_axis="x",
-                # wheel_ctrl_axis="y",
                 config=config,
             )
 
