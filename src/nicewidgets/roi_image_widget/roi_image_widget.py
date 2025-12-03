@@ -183,6 +183,16 @@ class RoiImageWidget:
             img_height=self.img_height,
         )
 
+        # Render viewport (int-sliced view of the image actually shown)
+        self._render_viewport: Viewport = Viewport(
+            img_width=self.img_width,
+            img_height=self.img_height,
+            x_min=self.viewport.x_min,
+            x_max=self.viewport.x_max,
+            y_min=self.viewport.y_min,
+            y_max=self.viewport.y_max,
+        )
+
         # ROI storage
         self._rois: Dict[str, _Roi] = {}
         self._next_id: int = 1
@@ -349,41 +359,51 @@ class RoiImageWidget:
     # ------------- internals: rendering -------------
 
     # def _view_array(self) -> np.ndarray:
-    #     """Return the current viewport region as a NumPy array."""
-    #     y_min, y_max, x_min, x_max = self.viewport.get_int_slice()
+    #     """Return the current viewport region as a NumPy array.
+
+    #     Uses the logical float viewport for bounds, but computes integer
+    #     slice indices for the actual image data and stores those in
+    #     ``self._render_viewport`` for consistent coordinate transforms.
+    #     """
+    #     vp = self.viewport
+
+    #     # Compute integer slice indices from the logical viewport
+    #     y_min, y_max, x_min, x_max = vp.get_int_slice()
+
+    #     # Update the render viewport to match the slice we are displaying,
+    #     # *without* mutating the logical float viewport.
+    #     self._render_viewport = Viewport(
+    #         img_width=self.img_width,
+    #         img_height=self.img_height,
+    #         x_min=float(x_min),
+    #         x_max=float(x_max),
+    #         y_min=float(y_min),
+    #         y_max=float(y_max),
+    #     )
+
+    #     # Slice the actual image
     #     return self.image[y_min:y_max, x_min:x_max]
 
     def _view_array(self) -> np.ndarray:
-        """Return the current viewport region as a NumPy array, snapped to pixels."""
+        """Return the current viewport region as a NumPy array.
+
+        Uses the logical float viewport for bounds, but only computes
+        integer slice indices for the actual image data. The viewport
+        itself is NOT mutated here.
+        """
         y_min, y_max, x_min, x_max = self.viewport.get_int_slice()
-
-        # Snap viewport bounds to the exact slice we are displaying.
-        # This keeps full_to_view / view_to_full perfectly aligned
-        # with the cropped image used in the interactive widget.
-        self.viewport.x_min = float(x_min)
-        self.viewport.x_max = float(x_max)
-        self.viewport.y_min = float(y_min)
-        self.viewport.y_max = float(y_max)
-
         return self.image[y_min:y_max, x_min:x_max]
-
-    # def _render_view_pil(self) -> Image.Image:
-    #     """Render current viewport region as a PIL RGB image."""
-    #     sub = self._view_array()
-    #     # Update display size to match the current view slice
-    #     self.DISPLAY_H, self.DISPLAY_W = sub.shape
-    #     img = array_to_pil(sub, vmin=self._vmin, vmax=self._vmax, cmap=self._cmap)
-    #     return img
 
     def _render_view_pil(self) -> Image.Image:
         """Render current viewport region as a PIL RGB image.
 
         The viewport slice is always rescaled to a fixed DISPLAY_W x DISPLAY_H,
         so the on-screen widget size stays constant while zooming.
-        
+
         DISPLAY_W / DISPLAY_H stay constant (whatever is set in __init__).
-        
-        Every zoom just crops a different sub and resizes into the same (DISPLAY_W, DISPLAY_H).
+
+        Every zoom just crops a different sub and resizes into the same
+        (DISPLAY_W, DISPLAY_H).
         """
         sub = self._view_array()
         img = array_to_pil(sub, vmin=self._vmin, vmax=self._vmax, cmap=self._cmap)
@@ -411,7 +431,8 @@ class RoiImageWidget:
 
     def _redraw_overlays(self) -> None:
         """Draw ROI rectangles as SVG overlay in display coordinates."""
-        vp = self.viewport
+        # Use the render viewport (int-aligned slice) for mapping to display
+        vp = self._render_viewport or self.viewport
         svg_parts: list[str] = []
 
         for roi in self._rois.values():
@@ -441,14 +462,6 @@ class RoiImageWidget:
             w = right_vx - left_vx
             h = bottom_vy - top_vy
 
-            # stroke = "lime" if roi.id == self._selected_id else "red"
-            # svg_parts.append(
-            #     f'<rect x="{left_vx}" y="{top_vy}" '
-            #     f'width="{w}" height="{h}" '
-            #     f'stroke="{stroke}" stroke-width="2" '
-            #     f'fill="red" fill-opacity="0.15" />'
-            # )
-
             is_selected = roi.id == self._selected_id
             stroke = (
                 self.config.roi_selected_color
@@ -475,10 +488,12 @@ class RoiImageWidget:
         vx = max(0.0, min(float(self.DISPLAY_W - 1), e.image_x))
         vy = max(0.0, min(float(self.DISPLAY_H - 1), e.image_y))
 
+        # Use the render viewport for converting display coords back to full
+        vp_for_mapping = self._render_viewport or self.viewport
         x_full, y_full = view_to_full(
             vx,
             vy,
-            self.viewport,
+            vp_for_mapping,
             self.DISPLAY_W,
             self.DISPLAY_H,
         )
@@ -502,6 +517,16 @@ class RoiImageWidget:
         if e.type == "mousedown" and e.button == 0:
             # Panning if enabled and modifier pressed (anchored to pan start)
             if self.config.enable_panning and self.config.pan_modifier == "shift" and e.shift:
+                # If we're already showing the full image, there is nothing to pan.
+                full_w = float(self.img_width)
+                full_h = float(self.img_height)
+                if (
+                    abs(self.viewport.width - full_w) < 1e-6
+                    and abs(self.viewport.height - full_h) < 1e-6
+                ):
+                    # Ignore Shift+drag in full-view mode.
+                    return
+
                 self._mode = "panning"
                 self._start_x_full = x_full
                 self._start_y_full = y_full
@@ -811,7 +836,8 @@ class RoiImageWidget:
                 - "resizing_bottom"
             or (None, None) if no ROI hit.
         """
-        vp = self.viewport
+        # vp = self.viewport
+        vp = self._render_viewport or self.viewport
         tol = self.config.edge_tolerance_px
 
         # Check most recently added first

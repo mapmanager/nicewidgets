@@ -84,13 +84,59 @@ class Viewport:
         self._ensure_min_size(min_width, min_height)
         self._clamp_to_image()
 
+    # def pan(self, dx: float, dy: float) -> None:
+    #     """Pan viewport by (dx, dy) in full-image coords."""
+    #     self.x_min -= dx
+    #     self.x_max -= dx
+    #     self.y_min -= dy
+    #     self.y_max -= dy
+    #     self._clamp_to_image()
+
     def pan(self, dx: float, dy: float) -> None:
-        """Pan viewport by (dx, dy) in full-image coords."""
+        """Pan the viewport by the given deltas in full-image coordinates.
+
+        Args:
+            dx: Delta in X (positive moves the visible window right).
+            dy: Delta in Y (positive moves the visible window down).
+
+        Notes:
+            Panning is clamped so the viewport never leaves the image bounds,
+            **while preserving the current width and height**.
+        """
+        # Current size
+        w = self.width
+        h = self.height
+
+        # Apply raw shift
         self.x_min -= dx
         self.x_max -= dx
         self.y_min -= dy
         self.y_max -= dy
-        self._clamp_to_image()
+
+        # Keep width/height exactly the same, but clamp inside image.
+        # If we go past the left edge, shift right.
+        if self.x_min < 0.0:
+            self.x_max -= self.x_min  # subtract a negative -> add
+            self.x_min = 0.0
+        # If we go past the right edge, shift left.
+        if self.x_max > float(self.img_width):
+            overshoot = self.x_max - float(self.img_width)
+            self.x_min -= overshoot
+            self.x_max = float(self.img_width)
+
+        # Same logic for Y
+        if self.y_min < 0.0:
+            self.y_max -= self.y_min
+            self.y_min = 0.0
+        if self.y_max > float(self.img_height):
+            overshoot = self.y_max - float(self.img_height)
+            self.y_min -= overshoot
+            self.y_max = float(self.img_height)
+
+        # As a safety, if the viewport somehow got larger than the image,
+        # fall back to full view.
+        if self.width > float(self.img_width) or self.height > float(self.img_height):
+            self.reset()
 
     def get_int_slice(self) -> Tuple[int, int, int, int]:
         """Return (y_min, y_max, x_min, x_max) as ints, clamped."""
@@ -102,18 +148,34 @@ class Viewport:
 
     # ------------------ internal helpers ------------------
 
+    # def _clamp_to_image(self) -> None:
+    #     self.x_min = max(0.0, min(float(self.img_width), self.x_min))
+    #     self.x_max = max(0.0, min(float(self.img_width), self.x_max))
+    #     self.y_min = max(0.0, min(float(self.img_height), self.y_min))
+    #     self.y_max = max(0.0, min(float(self.img_height), self.y_max))
+
+    #     if self.x_max <= self.x_min:
+    #         self.x_min = 0.0
+    #         self.x_max = float(self.img_width)
+    #     if self.y_max <= self.y_min:
+    #         self.y_min = 0.0
+    #         self.y_max = float(self.img_height)
+
     def _clamp_to_image(self) -> None:
+        """Clamp viewport edges to remain within the image bounds.
+
+        This is primarily used after zoom operations. It keeps the viewport
+        inside [0, img_width] x [0, img_height]. If the viewport becomes
+        degenerate, it falls back to full-image view.
+        """
         self.x_min = max(0.0, min(float(self.img_width), self.x_min))
         self.x_max = max(0.0, min(float(self.img_width), self.x_max))
         self.y_min = max(0.0, min(float(self.img_height), self.y_min))
         self.y_max = max(0.0, min(float(self.img_height), self.y_max))
 
-        if self.x_max <= self.x_min:
-            self.x_min = 0.0
-            self.x_max = float(self.img_width)
-        if self.y_max <= self.y_min:
-            self.y_min = 0.0
-            self.y_max = float(self.img_height)
+        # If somehow inverted or collapsed, reset to full image.
+        if self.x_max <= self.x_min or self.y_max <= self.y_min:
+            self.reset()
 
     def _ensure_min_size(self, min_width: float, min_height: float) -> None:
         # X
