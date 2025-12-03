@@ -42,7 +42,34 @@ class _Roi:
             "bottom": int(round(self.bottom)),
         }
 
+@dataclass
+class RoiImageConfig:
+    # Wheel / zoom behavior
+    wheel_default_axis: str = "both"        # "both", "x", or "y"
+    wheel_shift_axis: str | None = "x"      # axis when Shift held
+    wheel_ctrl_axis: str | None = "y"       # axis when Ctrl held
+    edge_tolerance_px: float = 5.0          # edge hit-test tolerance (display px)
+    zoom_in_factor: float = 0.8             # factor for zooming in
+    zoom_out_factor: float = 1.25           # factor for zooming out
 
+    # ROI appearance
+    roi_color: str = "red"
+    roi_selected_color: str = "lime"
+    roi_line_width: float = 2.0
+    roi_fill_color: str = "red"
+    roi_fill_opacity: float = 0.15
+
+    # ROI geometry constraints (in full-image pixels)
+    min_roi_width: float = 3.0
+    min_roi_height: float = 3.0
+
+    # Panning behavior
+    enable_panning: bool = True
+    pan_modifier: str = "shift"             # currently only "shift" supported
+
+    # image around border
+    image_border_width: int = 0         # in pixels
+    
 def array_to_pil(
     arr: np.ndarray,
     vmin: float | None = None,
@@ -101,10 +128,11 @@ class RoiImageWidget:
         vmax: float | None = None,
         cmap: str = "gray",
         parent=None,
-        wheel_default_axis: str = "both",  # "both", "x", "y"
-        wheel_shift_axis: str | None = "x",
-        wheel_ctrl_axis: str | None = "y",
-        edge_tolerance_px: float = 5.0,
+        # wheel_default_axis: str = "both",  # "both", "x", "y"
+        # wheel_shift_axis: str | None = "x",
+        # wheel_ctrl_axis: str | None = "y",
+        # edge_tolerance_px: float = 5.0,
+        config: RoiImageConfig | None = None,
     ) -> None:
         if image.ndim != 2:
             raise ValueError("RoiImageWidget expects a 2D numpy array")
@@ -123,6 +151,12 @@ class RoiImageWidget:
         self._vmax = float(vmax) if vmax is not None else float(np.nanmax(self.image))
         self._cmap = cmap
 
+        # Configuration: either provided or default, then override some fields
+        if config is None:
+            self.config = RoiImageConfig()
+        else:
+            self.config = config
+
         # Viewport
         self.viewport = Viewport(
             img_width=self.img_width,
@@ -133,9 +167,6 @@ class RoiImageWidget:
         self._rois: Dict[str, _Roi] = {}
         self._next_id: int = 1
         self._selected_id: Optional[str] = None
-
-        # if rois:
-        #     self.set_rois(rois)
 
         # Last mouse full-image position
         self._last_mouse_x_full: Optional[float] = None
@@ -148,13 +179,9 @@ class RoiImageWidget:
         self._drag_roi_id: Optional[str] = None
         self._drag_orig: Optional[tuple[float, float, float, float]] = None  # (l,t,r,b)
 
-        # Wheel zoom config
-        self._wheel_default_axis = wheel_default_axis  # "both", "x", "y"
-        self._wheel_shift_axis = wheel_shift_axis      # str or None
-        self._wheel_ctrl_axis = wheel_ctrl_axis        # str or None
-
-        # Edge hit-test tolerance (in display pixels)
-        self._edge_tol_px = edge_tolerance_px
+        # Panning state
+        self._last_pan_x_full: float | None = None
+        self._last_pan_y_full: float | None = None
 
         # Container / interactive image
         container = parent if parent is not None else ui.element("div").classes("w-full")
@@ -179,13 +206,19 @@ class RoiImageWidget:
             # Global key handler for Delete / Backspace
             ui.on('keydown', self._on_key)
 
-        # Initial overlays / initial ROIs
-        if rois:
-            self.set_rois(rois)  # will call _redraw_overlays()
-        else:
-            self._redraw_overlays()
+        # # Initial overlays / initial ROIs
+        # if rois:
+        #     self.set_rois(rois)  # will call _redraw_overlays()
+        # else:
+        #     self._redraw_overlays()
 
-        self.image_redrawn.emit()
+        # self.image_redrawn.emit()
+
+        # Initialize ROIs (if provided) and perform a full initial draw
+        if rois:
+            self.set_rois(rois)
+
+        self._update_image()
 
     # ------------- properties -------------
 
@@ -349,7 +382,7 @@ class RoiImageWidget:
         # so NiceGUI's crosshair stays aligned with the actual image pixels.
         self.interactive.style(
             f"aspect-ratio: {self.DISPLAY_W} / {self.DISPLAY_H}; "
-            "object-fit: contain; border: 5px solid #666;"
+            f"object-fit: contain; border: {self.config.image_border_width}px solid #666;"
         )
 
         self._redraw_overlays()
@@ -387,38 +420,33 @@ class RoiImageWidget:
             w = right_vx - left_vx
             h = bottom_vy - top_vy
 
-            stroke = "lime" if roi.id == self._selected_id else "red"
+            # stroke = "lime" if roi.id == self._selected_id else "red"
+            # svg_parts.append(
+            #     f'<rect x="{left_vx}" y="{top_vy}" '
+            #     f'width="{w}" height="{h}" '
+            #     f'stroke="{stroke}" stroke-width="2" '
+            #     f'fill="red" fill-opacity="0.15" />'
+            # )
+
+            is_selected = roi.id == self._selected_id
+            stroke = (
+                self.config.roi_selected_color
+                if is_selected
+                else self.config.roi_color
+            )
+
             svg_parts.append(
                 f'<rect x="{left_vx}" y="{top_vy}" '
                 f'width="{w}" height="{h}" '
-                f'stroke="{stroke}" stroke-width="2" '
-                f'fill="red" fill-opacity="0.15" />'
+                f'stroke="{stroke}" stroke-width="{self.config.roi_line_width}" '
+                f'fill="{self.config.roi_fill_color}" '
+                f'fill-opacity="{self.config.roi_fill_opacity}" />'
             )
 
         self.interactive.content = "".join(svg_parts)
         self.interactive.update()
 
     # ------------- internals: events -------------
-
-    # def _on_mouse(self, e: events.MouseEventArguments) -> None:
-    #     """Handle mouse move: update last mouse pos and emit full-image coords."""
-    #     # Clamp to display size
-    #     vx = max(0.0, min(float(self.DISPLAY_W - 1), e.image_x))
-    #     vy = max(0.0, min(float(self.DISPLAY_H - 1), e.image_y))
-
-    #     x_full, y_full = view_to_full(
-    #         vx,
-    #         vy,
-    #         self.viewport,
-    #         self.DISPLAY_W,
-    #         self.DISPLAY_H,
-    #     )
-
-    #     self._last_mouse_x_full = x_full
-    #     self._last_mouse_y_full = y_full
-    #     self.mouse_moved_full.emit(x_full, y_full)
-
-    #     # Later we’ll add hit-testing + ROI interactions here.
 
     def _on_mouse(self, e: events.MouseEventArguments) -> None:
         """Handle NiceGUI mouse events for ROI interactions + mouse-move signal."""
@@ -439,8 +467,17 @@ class RoiImageWidget:
         self._last_mouse_y_full = y_full
         self.mouse_moved_full.emit(x_full, y_full)
 
-        # ---------- MOUSEDOWN (start drawing / moving / resizing) ----------
+        # ---------- MOUSEDOWN (start drawing / moving / resizing / panning) ----------
         if e.type == "mousedown" and e.button == 0:
+            # Panning if enabled and modifier pressed
+            if self.config.enable_panning and self.config.pan_modifier == "shift" and e.shift:
+                self._mode = "panning"
+                self._start_x_full = x_full
+                self._start_y_full = y_full
+                self._last_pan_x_full = x_full
+                self._last_pan_y_full = y_full
+                return
+
             roi_id, mode = self._hit_test(x_full, y_full)
 
             if roi_id is not None and mode is not None:
@@ -479,6 +516,18 @@ class RoiImageWidget:
 
         # ---------- MOUSEMOVE with left button held ----------
         if e.type == "mousemove" and (e.buttons & 1):
+            # Panning
+            if self._mode == "panning":
+                if self._last_pan_x_full is not None and self._last_pan_y_full is not None:
+                    dx = x_full - self._last_pan_x_full
+                    dy = y_full - self._last_pan_y_full
+                    self.viewport.pan(dx, dy)
+                    self._last_pan_x_full = x_full
+                    self._last_pan_y_full = y_full
+                    self.viewport_changed.emit(self.viewport.to_dict())
+                    self._update_image()
+                return
+
             # Drawing new ROI (rubber-banding)
             if self._mode == "drawing" and self._selected_id is not None:
                 roi = self._rois.get(self._selected_id)
@@ -489,6 +538,8 @@ class RoiImageWidget:
                 roi.right = self._clamp_x(max(self._start_x_full, x_full))
                 roi.top = self._clamp_y(min(self._start_y_full, y_full))
                 roi.bottom = self._clamp_y(max(self._start_y_full, y_full))
+
+                self._enforce_min_size(roi)  # sets roi, maybe should return it?
 
                 self.roi_updated.emit(roi.to_dict())
                 self._redraw_overlays()
@@ -514,6 +565,8 @@ class RoiImageWidget:
                 roi.top = self._clamp_y(t0 + dy)
                 roi.bottom = self._clamp_y(b0 + dy)
 
+                self._enforce_min_size(roi)  # optional, but safe
+
                 self.roi_updated.emit(roi.to_dict())
                 self._redraw_overlays()
                 return
@@ -535,6 +588,8 @@ class RoiImageWidget:
                 elif self._mode == "resizing_bottom":
                     roi.bottom = self._clamp_y(max(y_full, t0))
 
+                self._enforce_min_size(roi)
+
                 self.roi_updated.emit(roi.to_dict())
                 self._redraw_overlays()
                 return
@@ -543,10 +598,20 @@ class RoiImageWidget:
 
         # ---------- MOUSEUP (finish drawing/moving/resizing) ----------
         if e.type == "mouseup" and e.button == 0:
+            if self._mode == "panning":
+                self._mode = "idle"
+                self._start_x_full = None
+                self._start_y_full = None
+                self._last_pan_x_full = None
+                self._last_pan_y_full = None
+                return
+
             if self._mode == "drawing" and self._selected_id is not None:
                 roi = self._rois.get(self._selected_id)
                 if roi is not None:
                     # Remove zero-area ROIs
+                    # the min-size enforcement just prevents tiny sliver boxes during interaction
+                    # not entirely needed when using self._enforce_min_size(roi)
                     if int(round(roi.left)) == int(round(roi.right)) or int(
                         round(roi.top)
                     ) == int(round(roi.bottom)):
@@ -595,13 +660,24 @@ class RoiImageWidget:
         ctrl = bool(args.get("ctrlKey", False))
 
         # Base zoom factor: negative dy -> zoom in; positive -> out
-        base_factor = 0.8 if dy < 0 else 1.25
+        # base_factor = 0.8 if dy < 0 else 1.25
 
-        axis = self._wheel_default_axis  # "both", "x", "y"
-        if shift and self._wheel_shift_axis is not None:
-            axis = self._wheel_shift_axis
-        elif ctrl and self._wheel_ctrl_axis is not None:
-            axis = self._wheel_ctrl_axis
+        # axis = self._wheel_default_axis  # "both", "x", "y"
+        # if shift and self._wheel_shift_axis is not None:
+        #     axis = self._wheel_shift_axis
+        # elif ctrl and self._wheel_ctrl_axis is not None:
+        #     axis = self._wheel_ctrl_axis
+
+        # Base zoom factor: negative dy -> zoom in; positive -> out
+        base_factor = (
+            self.config.zoom_in_factor if dy < 0 else self.config.zoom_out_factor
+        )
+
+        axis = self.config.wheel_default_axis  # "both", "x", "y"
+        if shift and self.config.wheel_shift_axis is not None:
+            axis = self.config.wheel_shift_axis
+        elif ctrl and self.config.wheel_ctrl_axis is not None:
+            axis = self.config.wheel_ctrl_axis
 
         if axis == "x":
             factor_x = base_factor
@@ -633,17 +709,26 @@ class RoiImageWidget:
 
     # ------------- internals: ROI helpers -------------
 
-    # superseeded by _hit_test
-    # def _hit_test_body(self, x_full: float, y_full: float) -> Optional[str]:
-    #     """Return the id of the topmost ROI whose body contains (x_full, y_full)."""
-    #     # Check in reverse insertion order so the most recently added ROIs win
-    #     for roi in reversed(list(self._rois.values())):
-    #         if (
-    #             roi.left <= x_full <= roi.right
-    #             and roi.top <= y_full <= roi.bottom
-    #         ):
-    #             return roi.id
-    #     return None
+    def _enforce_min_size(self, roi: _Roi) -> None:
+        """Ensure ROI meets minimum size constraints in full-image pixels."""
+        min_w = self.config.min_roi_width
+        min_h = self.config.min_roi_height
+
+        # Width
+        width = roi.right - roi.left
+        if width < min_w:
+            cx = 0.5 * (roi.left + roi.right)
+            half_w = min_w / 2.0
+            roi.left = self._clamp_x(cx - half_w)
+            roi.right = self._clamp_x(cx + half_w)
+
+        # Height
+        height = roi.bottom - roi.top
+        if height < min_h:
+            cy = 0.5 * (roi.top + roi.bottom)
+            half_h = min_h / 2.0
+            roi.top = self._clamp_y(cy - half_h)
+            roi.bottom = self._clamp_y(cy + half_h)
 
     def _hit_test(
         self,
@@ -662,7 +747,7 @@ class RoiImageWidget:
             or (None, None) if no ROI hit.
         """
         vp = self.viewport
-        tol = self._edge_tol_px
+        tol = self.config.edge_tolerance_px
 
         # Check most recently added first
         rois = list(self._rois.values())

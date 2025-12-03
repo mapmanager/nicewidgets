@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.ndimage import gaussian_filter
+
 from nicegui import ui
 
-from nicewidgets.roi_image_widget.roi_image_widget import RoiImageWidget
+from nicewidgets.roi_image_widget.roi_image_widget import RoiImageWidget, RoiImageConfig
 
 
 def create_demo_image(height: int = 120, width: int = 400) -> np.ndarray:
@@ -17,22 +19,67 @@ def create_demo_image(height: int = 120, width: int = 400) -> np.ndarray:
     img = np.clip(img, 0.0, 1.0)
     return img
 
+def create_checkerboard_image(
+    height: int = 160,
+    width: int = 2000,
+    block_h: int = 20,
+    block_w: int = 40,
+    smooth_sigma: float = 1.0,
+) -> np.ndarray:
+    """
+    Create a checkerboard test image for ROI widget debugging.
+
+    Args:
+        height: Image height in pixels.
+        width: Image width in pixels.
+        block_h: Height of one checker tile.
+        block_w: Width of one checker tile.
+        smooth_sigma: Gaussian blur sigma. Set 0.0 for no smoothing.
+
+    Returns:
+        2D float32 NumPy array in [0,1].
+    """
+    img = np.zeros((height, width), dtype=np.float32)
+
+    for y in range(height):
+        for x in range(width):
+            by = (y // block_h)
+            bx = (x // block_w)
+            img[y, x] = 1.0 if (bx + by) % 2 == 0 else 0.0
+
+    # Optional Gaussian smoothing for nicer zoom & interpolation
+    if smooth_sigma > 0:
+        img = gaussian_filter(img, smooth_sigma)
+
+    # Normalize to [0,1] after smoothing
+    img -= img.min()
+    img /= (img.max() + 1e-8)
+
+    return img
 
 if __name__ in {"__main__", "__mp_main__"}:
-    img = create_demo_image()
+    # img = create_demo_image()
+    img = create_checkerboard_image()
 
     with ui.row().classes("w-full gap-6"):
         with ui.column().classes("items-start gap-2 w-3/4"):
             ui.label("RoiImageWidget demo").classes("text-lg font-bold")
+
+            config = RoiImageConfig(
+                wheel_default_axis="x",
+                wheel_shift_axis=None,
+                wheel_ctrl_axis="y",
+            )
 
             widget = RoiImageWidget(
                 img,
                 rois=[
                     {"id": "roi-1", "left": 20, "top": 10, "right": 80, "bottom": 50},
                 ],
-                wheel_default_axis="both",
-                wheel_shift_axis="x",
-                wheel_ctrl_axis="y",
+                # wheel_default_axis="both",
+                # wheel_shift_axis="x",
+                # wheel_ctrl_axis="y",
+                config=config,
             )
 
             @widget.viewport_changed.connect
@@ -40,7 +87,8 @@ if __name__ in {"__main__", "__mp_main__"}:
                 # Just show a very small toast as proof
                 x_min = vp_dict["x_min"]
                 x_max = vp_dict["x_max"]
-                ui.notify(f"Viewport x=[{x_min:.1f}, {x_max:.1f}]", close_button=True, timeout=1.0)
+                # ui.notify(f"Viewport x=[{x_min:.1f}, {x_max:.1f}]", close_button=True, timeout=1.0)
+                pass
 
             @widget.roi_created.connect
             def on_roi_created(roi: dict) -> None:
@@ -97,4 +145,20 @@ if __name__ in {"__main__", "__mp_main__"}:
 
             ui.button("Auto contrast", on_click=lambda: widget.auto_contrast())
 
+        with ui.column().classes("items-start gap-2 w-1/4"):
+            ui.label("ROI Dump")
+
+            json_area = ui.textarea(label="ROIs JSON").props("rows=6")
+
+            def dump_rois():
+                import json
+                json_area.value = json.dumps(widget.get_rois(), indent=2)
+
+            def load_rois():
+                import json
+                rois = json.loads(json_area.value)
+                widget.set_rois(rois)
+
+            ui.button("Dump ROIs", on_click=dump_rois)
+            ui.button("Load ROIs", on_click=load_rois)
     ui.run()
