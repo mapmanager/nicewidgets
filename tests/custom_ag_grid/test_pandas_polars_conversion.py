@@ -1,12 +1,11 @@
 import pytest
 
 from nicewidgets.custom_ag_grid.config import ColumnConfig
-from nicewidgets.custom_ag_grid.grid import CustomAgGrid, HAS_PANDAS, HAS_POLARS
+from nicewidgets.custom_ag_grid import CustomAgGrid
 
 
-@pytest.mark.skipif(not HAS_PANDAS, reason="pandas not installed")
 def test_convert_from_pandas() -> None:
-    import pandas as pd
+    pd = pytest.importorskip("pandas")
 
     df = pd.DataFrame(
         {"id": [1, 2], "name": ["Alice", "Bob"], "city": ["A", "B"]}
@@ -21,9 +20,8 @@ def test_convert_from_pandas() -> None:
     assert len(df2) == 2
 
 
-@pytest.mark.skipif(not HAS_POLARS, reason="polars not installed")
 def test_convert_from_polars() -> None:
-    import polars as pl
+    pl = pytest.importorskip("polars")
 
     df = pl.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]})
     cols = [ColumnConfig("id"), ColumnConfig("name")]

@@ -1,7 +1,7 @@
 import pytest
 
 from nicewidgets.custom_ag_grid.config import ColumnConfig, GridConfig
-from nicewidgets.custom_ag_grid.grid import CustomAgGrid
+from nicewidgets.custom_ag_grid import CustomAgGrid
 
 
 def test_convert_list_of_dicts() -> None:
