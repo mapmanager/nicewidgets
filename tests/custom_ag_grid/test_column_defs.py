@@ -1,5 +1,5 @@
 from nicewidgets.custom_ag_grid.config import ColumnConfig, GridConfig
-from nicewidgets.custom_ag_grid.grid import CustomAgGrid
+from nicewidgets.custom_ag_grid import CustomAgGrid
 
 
 def test_select_editor_unique_values() -> None:
@@ -14,7 +14,7 @@ def test_select_editor_unique_values() -> None:
     grid_cfg = GridConfig(selection_mode="single")
     grid = CustomAgGrid(data=data, columns=cols, grid_config=grid_cfg)
 
-    # ColumnDefs are stored in grid.grid.options['columnDefs']
+    # ColumnDefs are stored in custom_ag_grid.grid.options['columnDefs']
     col_defs = grid.grid.options["columnDefs"]
     assert len(col_defs) == 1
     col_def = col_defs[0]

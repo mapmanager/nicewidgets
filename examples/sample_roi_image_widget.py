@@ -6,6 +6,11 @@ from scipy.ndimage import gaussian_filter
 from nicegui import ui
 
 from nicewidgets.roi_image_widget.roi_image_widget import RoiImageWidget, RoiImageConfig
+from nicewidgets.utils.logging import setup_logging
+
+# Configure logging for this standalone example
+# Logs will go to console and to ~/nicewidgets_example.log
+setup_logging(level="DEBUG", log_file="~/nicewidgets_example.log")
 
 
 def create_demo_image(height: int = 120, width: int = 400) -> np.ndarray:
@@ -96,22 +101,16 @@ if __name__ in {"__main__", "__mp_main__"}:
                 config=config,
             )
 
-            @widget.viewport_changed.connect
-            def on_vp(vp_dict: dict) -> None:
-                # Just show a very small toast as proof
-                x_min = vp_dict["x_min"]
-                x_max = vp_dict["x_max"]
-                # ui.notify(f"Viewport x=[{x_min:.1f}, {x_max:.1f}]", close_button=True, timeout=1.0)
-                pass
-
-            @widget.roi_created.connect
+            # Register callbacks for ROI events
             def on_roi_created(roi: dict) -> None:
                 ui.notify(f"ROI created: {roi['id']}", timeout=1.0)
-
-            @widget.roi_updated.connect
+            
             def on_roi_updated(roi: dict) -> None:
                 # You can inspect roi dict here if desired
                 pass
+            
+            widget.on_roi_created(on_roi_created)
+            widget.on_roi_updated(on_roi_updated)
 
         with ui.column().classes("items-start gap-2 w-1/4"):
             ui.label("Contrast & colormap")

@@ -6,13 +6,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional, TypedDict
 
+from typing import Callable
+
 import numpy as np
 from nicegui import ui, events
-from psygnal import Signal
 from PIL import Image
 from matplotlib import cm
 
+from nicewidgets.utils.logging import get_logger
 from .viewport import Viewport, view_to_full, full_to_view
+
+logger = get_logger(__name__)
 
 
 class RoiDict(TypedDict):
@@ -42,6 +46,7 @@ class _Roi:
             "bottom": int(round(self.bottom)),
         }
 
+
 @dataclass
 class RoiImageConfig:
     # Wheel / zoom behavior
@@ -70,9 +75,10 @@ class RoiImageConfig:
     # Display resolution (logical pixel grid)
     display_width_px: int | None = None
     display_height_px: int | None = None
-        # image around border
-    image_border_width: int = 0         # in pixels
-    
+    # image border
+    image_border_width: int = 0             # in pixels
+
+
 def array_to_pil(
     arr: np.ndarray,
     vmin: float | None = None,
@@ -105,22 +111,13 @@ class RoiImageWidget:
     - Input: 2D numpy array (grayscale).
     - Optional: initial ROIs as list of RoiDict.
     - Public API uses dicts; internal uses `_Roi`.
-
-    First pass:
-    - Draws image + ROIs.
-    - Handles mouse move, wheel zoom (configurable axes).
-    - Provides contrast and colormap APIs.
-    - ROI interactions (draw/move/resize) will be added in later passes.
+    
+    Events (via callback registration):
+        on_roi_created(handler): Handler called as handler(roi_dict)
+        on_roi_updated(handler): Handler called as handler(roi_dict)
+        on_roi_deleted(handler): Handler called as handler(roi_id)
+        on_roi_selected(handler): Handler called as handler(roi_id or None)
     """
-
-    # Signals (public API types)
-    roi_created = Signal(dict)               # RoiDict
-    roi_updated = Signal(dict)               # RoiDict
-    roi_deleted = Signal(str)                # roi_id
-    roi_selected = Signal(Optional[str])     # roi_id or None
-    viewport_changed = Signal(dict)          # viewport.to_dict()
-    mouse_moved_full = Signal(float, float)  # x_full, y_full
-    image_redrawn = Signal()                 # after each redraw
 
     def __init__(
         self,
@@ -131,10 +128,6 @@ class RoiImageWidget:
         vmax: float | None = None,
         cmap: str = "gray",
         parent=None,
-        # wheel_default_axis: str = "both",  # "both", "x", "y"
-        # wheel_shift_axis: str | None = "x",
-        # wheel_ctrl_axis: str | None = "y",
-        # edge_tolerance_px: float = 5.0,
         config: RoiImageConfig | None = None,
     ) -> None:
         if image.ndim != 2:
@@ -145,15 +138,11 @@ class RoiImageWidget:
 
         self.img_height, self.img_width = self.image.shape
 
-        # Configuration: either provided or default, then override some fields
+        # Configuration: either provided or default
         if config is None:
             self.config = RoiImageConfig()
         else:
             self.config = config
-
-        # Fixed display size; can later be made configurable
-        # self.DISPLAY_W = self.img_width
-        # self.DISPLAY_H = self.img_height
 
         # Logical display size: default to image size, but allow override via config
         if self.config.display_width_px is not None:
@@ -171,26 +160,10 @@ class RoiImageWidget:
         self._vmax = float(vmax) if vmax is not None else float(np.nanmax(self.image))
         self._cmap = cmap
 
-        # # Configuration: either provided or default, then override some fields
-        # if config is None:
-        #     self.config = RoiImageConfig()
-        # else:
-        #     self.config = config
-
-        # Viewport
+        # Viewport: single source of truth for visible region
         self.viewport = Viewport(
             img_width=self.img_width,
             img_height=self.img_height,
-        )
-
-        # Render viewport (int-sliced view of the image actually shown)
-        self._render_viewport: Viewport = Viewport(
-            img_width=self.img_width,
-            img_height=self.img_height,
-            x_min=self.viewport.x_min,
-            x_max=self.viewport.x_max,
-            y_min=self.viewport.y_min,
-            y_max=self.viewport.y_max,
         )
 
         # ROI storage
@@ -201,9 +174,15 @@ class RoiImageWidget:
         # Last mouse full-image position
         self._last_mouse_x_full: Optional[float] = None
         self._last_mouse_y_full: Optional[float] = None
+        
+        # Callback registries (like CustomAgGrid pattern - no psygnal)
+        self._roi_created_handlers: List[Callable[[dict], None]] = []
+        self._roi_updated_handlers: List[Callable[[dict], None]] = []
+        self._roi_deleted_handlers: List[Callable[[str], None]] = []
+        self._roi_selected_handlers: List[Callable[[Optional[str]], None]] = []
 
         # Interaction state for ROI drawing/moving
-        self._mode: str = "idle"  # "idle", "drawing", "moving"
+        self._mode: str = "idle"  # "idle", "drawing", "moving", "resizing_*", "panning"
         self._start_x_full: Optional[float] = None
         self._start_y_full: Optional[float] = None
         self._drag_roi_id: Optional[str] = None
@@ -213,6 +192,8 @@ class RoiImageWidget:
         self._last_pan_x_full: float | None = None
         self._last_pan_y_full: float | None = None
         self._pan_viewport_orig: dict | None = None  # snapshot at pan start, fix jitter
+        self._start_vx: Optional[float] = None       # display-space at pan start
+        self._start_vy: Optional[float] = None
 
         # Container / interactive image
         container = parent if parent is not None else ui.element("div").classes("w-full")
@@ -234,22 +215,20 @@ class RoiImageWidget:
             self.interactive.on_mouse(self._on_mouse)
             self.interactive.on("wheel", self._on_wheel)
 
-            # Global key handler for Delete / Backspace
-            ui.on('keydown', self._on_key)
-
-        # # Initial overlays / initial ROIs
-        # if rois:
-        #     self.set_rois(rois)  # will call _redraw_overlays()
-        # else:
-        #     self._redraw_overlays()
-
-        # self.image_redrawn.emit()
+            # Global key handler for Delete / Backspace / Enter
+            ui.on("keydown", self._on_key)
 
         # Initialize ROIs (if provided) and perform a full initial draw
         if rois:
             self.set_rois(rois)
 
         self._update_image()
+        
+        logger.info(
+            f"RoiImageWidget initialized: image={self.img_width}x{self.img_height}, "
+            f"display={self.DISPLAY_W}x{self.DISPLAY_H}, cmap={self._cmap}, "
+            f"vmin={self._vmin:.2f}, vmax={self._vmax:.2f}"
+        )
 
     # ------------- properties -------------
 
@@ -277,7 +256,7 @@ class RoiImageWidget:
                 id=roi_id,
                 left=self._clamp_x(left),
                 top=self._clamp_y(top),
-                right=self._clamp_x(right),  # we'll correct this next line
+                right=self._clamp_x(right),
                 bottom=self._clamp_y(bottom),
             )
 
@@ -296,40 +275,89 @@ class RoiImageWidget:
         self._next_id = max_idx
 
         self._redraw_overlays()
+        logger.debug(f"set_rois: loaded {len(self._rois)} ROIs")
 
-    # Placeholder; actual delete/selection helpers will be fleshed out when we add interactions
     def delete_selected_roi(self) -> None:
+        """Delete the currently selected ROI, if any."""
         if self._selected_id is None:
             return
         rid = self._selected_id
         if rid in self._rois:
             del self._rois[rid]
-            self.roi_deleted.emit(rid)
+            # Notify handlers
+            for handler in list(self._roi_deleted_handlers):
+                try:
+                    handler(rid)
+                except Exception:
+                    logger.exception("Error in roi_deleted handler")
+            logger.info(f"Deleted ROI: {rid}")
         self._selected_id = None
-        self.roi_selected.emit(None)
+        # Notify handlers
+        for handler in list(self._roi_selected_handlers):
+            try:
+                handler(None)
+            except Exception:
+                logger.exception("Error in roi_selected handler")
         self._redraw_overlays()
 
     def select_roi(self, roi_id: Optional[str]) -> None:
+        """Select an ROI by id (or None to clear selection)."""
         if roi_id is not None and roi_id not in self._rois:
             return
         self._selected_id = roi_id
-        self.roi_selected.emit(roi_id)
+        # Notify handlers
+        for handler in list(self._roi_selected_handlers):
+            try:
+                handler(roi_id)
+            except Exception:
+                logger.exception("Error in roi_selected handler")
         self._redraw_overlays()
+    
+    # ------------- public event registration API -------------
+    
+    def on_roi_created(self, handler: Callable[[dict], None]) -> None:
+        """Register callback for ROI creation events.
+        
+        Handler is called with: roi_dict (RoiDict)
+        """
+        self._roi_created_handlers.append(handler)
+    
+    def on_roi_updated(self, handler: Callable[[dict], None]) -> None:
+        """Register callback for ROI update events.
+        
+        Handler is called with: roi_dict (RoiDict)
+        """
+        self._roi_updated_handlers.append(handler)
+    
+    def on_roi_deleted(self, handler: Callable[[str], None]) -> None:
+        """Register callback for ROI deletion events.
+        
+        Handler is called with: roi_id (str)
+        """
+        self._roi_deleted_handlers.append(handler)
+    
+    def on_roi_selected(self, handler: Callable[[Optional[str]], None]) -> None:
+        """Register callback for ROI selection events.
+        
+        Handler is called with: roi_id (str or None)
+        """
+        self._roi_selected_handlers.append(handler)
 
     # ------------- public viewport API -------------
 
     def reset_view(self) -> None:
         """Show full image and redraw."""
         self.viewport.reset()
-        self.viewport_changed.emit(self.viewport.to_dict())
         self._update_image()
+        logger.debug("reset_view: viewport reset to full image")
 
     def get_viewport(self) -> dict:
+        """Return current viewport as a dict."""
         return self.viewport.to_dict()
 
     def set_viewport(self, vp_dict: dict) -> None:
+        """Set viewport from a dict and redraw."""
         self.viewport = Viewport.from_dict(vp_dict)
-        self.viewport_changed.emit(self.viewport.to_dict())
         self._update_image()
 
     # ------------- public image appearance API -------------
@@ -358,32 +386,6 @@ class RoiImageWidget:
 
     # ------------- internals: rendering -------------
 
-    # def _view_array(self) -> np.ndarray:
-    #     """Return the current viewport region as a NumPy array.
-
-    #     Uses the logical float viewport for bounds, but computes integer
-    #     slice indices for the actual image data and stores those in
-    #     ``self._render_viewport`` for consistent coordinate transforms.
-    #     """
-    #     vp = self.viewport
-
-    #     # Compute integer slice indices from the logical viewport
-    #     y_min, y_max, x_min, x_max = vp.get_int_slice()
-
-    #     # Update the render viewport to match the slice we are displaying,
-    #     # *without* mutating the logical float viewport.
-    #     self._render_viewport = Viewport(
-    #         img_width=self.img_width,
-    #         img_height=self.img_height,
-    #         x_min=float(x_min),
-    #         x_max=float(x_max),
-    #         y_min=float(y_min),
-    #         y_max=float(y_max),
-    #     )
-
-    #     # Slice the actual image
-    #     return self.image[y_min:y_max, x_min:x_max]
-
     def _view_array(self) -> np.ndarray:
         """Return the current viewport region as a NumPy array.
 
@@ -399,11 +401,6 @@ class RoiImageWidget:
 
         The viewport slice is always rescaled to a fixed DISPLAY_W x DISPLAY_H,
         so the on-screen widget size stays constant while zooming.
-
-        DISPLAY_W / DISPLAY_H stay constant (whatever is set in __init__).
-
-        Every zoom just crops a different sub and resizes into the same
-        (DISPLAY_W, DISPLAY_H).
         """
         sub = self._view_array()
         img = array_to_pil(sub, vmin=self._vmin, vmax=self._vmax, cmap=self._cmap)
@@ -419,20 +416,21 @@ class RoiImageWidget:
         pil_img = self._render_view_pil()
         self.interactive.set_source(pil_img)
 
-        # Keep DOM aspect ratio in sync with the current viewport slice,
-        # so NiceGUI's crosshair stays aligned with the actual image pixels.
+        # Keep DOM aspect ratio in sync with the display size
         self.interactive.style(
             f"aspect-ratio: {self.DISPLAY_W} / {self.DISPLAY_H}; "
             f"object-fit: contain; border: {self.config.image_border_width}px solid #666;"
         )
 
         self._redraw_overlays()
-        self.image_redrawn.emit()
 
     def _redraw_overlays(self) -> None:
-        """Draw ROI rectangles as SVG overlay in display coordinates."""
-        # Use the render viewport (int-aligned slice) for mapping to display
-        vp = self._render_viewport or self.viewport
+        """Draw ROI rectangles as SVG overlay in display coordinates.
+
+        Uses the same logical viewport that controls the image slice so ROIs
+        move correctly with zoom and pan.
+        """
+        vp = self.viewport
         svg_parts: list[str] = []
 
         for roi in self._rois.values():
@@ -488,35 +486,27 @@ class RoiImageWidget:
         vx = max(0.0, min(float(self.DISPLAY_W - 1), e.image_x))
         vy = max(0.0, min(float(self.DISPLAY_H - 1), e.image_y))
 
-        # Use the render viewport for converting display coords back to full
-        vp_for_mapping = self._render_viewport or self.viewport
+        # Use the logical viewport for converting display coords back to full
         x_full, y_full = view_to_full(
             vx,
             vy,
-            vp_for_mapping,
+            self.viewport,
             self.DISPLAY_W,
             self.DISPLAY_H,
         )
 
-        # Always emit mouse position in full-image space
+        # Track mouse position in full-image space
         self._last_mouse_x_full = x_full
         self._last_mouse_y_full = y_full
-        self.mouse_moved_full.emit(x_full, y_full)
 
         # ---------- MOUSEDOWN (start drawing / moving / resizing / panning) ----------
-        # if e.type == "mousedown" and e.button == 0:
-        #     # Panning if enabled and modifier pressed
-        #     if self.config.enable_panning and self.config.pan_modifier == "shift" and e.shift:
-        #         self._mode = "panning"
-        #         self._start_x_full = x_full
-        #         self._start_y_full = y_full
-        #         self._last_pan_x_full = x_full
-        #         self._last_pan_y_full = y_full
-        #         return
-
         if e.type == "mousedown" and e.button == 0:
             # Panning if enabled and modifier pressed (anchored to pan start)
-            if self.config.enable_panning and self.config.pan_modifier == "shift" and e.shift:
+            if (
+                self.config.enable_panning
+                and self.config.pan_modifier == "shift"
+                and e.shift
+            ):
                 # If we're already showing the full image, there is nothing to pan.
                 full_w = float(self.img_width)
                 full_h = float(self.img_height)
@@ -530,19 +520,26 @@ class RoiImageWidget:
                 self._mode = "panning"
                 self._start_x_full = x_full
                 self._start_y_full = y_full
-                self._last_pan_x_full = x_full  # kept for possible future use
+                self._start_vx = vx  # keeping image under mouse cursor
+                self._start_vy = vy
+                self._last_pan_x_full = x_full  # optional/debug
                 self._last_pan_y_full = y_full
                 # Snapshot the viewport at the start of the pan gesture
                 self._pan_viewport_orig = self.viewport.to_dict()
                 return
 
-            #
+            # ROI hit-testing
             roi_id, mode = self._hit_test(x_full, y_full)
 
             if roi_id is not None and mode is not None:
                 # Existing ROI hit
                 self._selected_id = roi_id
-                self.roi_selected.emit(roi_id)
+                # Notify handlers
+                for handler in list(self._roi_selected_handlers):
+                    try:
+                        handler(roi_id)
+                    except Exception:
+                        logger.exception("Error in roi_selected handler")
                 roi = self._rois[roi_id]
 
                 self._start_x_full = x_full
@@ -565,62 +562,71 @@ class RoiImageWidget:
             self._start_x_full = x_full
             self._start_y_full = y_full
             self._selected_id = roi.id
-            self.roi_selected.emit(roi.id)
+            # Notify selection handlers
+            for handler in list(self._roi_selected_handlers):
+                try:
+                    handler(roi.id)
+                except Exception:
+                    logger.exception("Error in roi_selected handler")
 
-            # Emit creation signal with initial (zero-area) ROI
-            self.roi_created.emit(roi.to_dict())
+            # Notify creation handlers with initial (zero-area) ROI
+            for handler in list(self._roi_created_handlers):
+                try:
+                    handler(roi.to_dict())
+                except Exception:
+                    logger.exception("Error in roi_created handler")
+            logger.info(f"Started creating ROI: {roi.id} at ({x_full:.1f}, {y_full:.1f})")
 
             self._redraw_overlays()
             return
 
         # ---------- MOUSEMOVE with left button held ----------
-        # if e.type == "mousemove" and (e.buttons & 1):
-        #     # Panning
-        #     if self._mode == "panning":
-        #         if self._last_pan_x_full is not None and self._last_pan_y_full is not None:
-        #             dx = x_full - self._last_pan_x_full
-        #             dy = y_full - self._last_pan_y_full
-        #             self.viewport.pan(dx, dy)
-        #             self._last_pan_x_full = x_full
-        #             self._last_pan_y_full = y_full
-        #             self.viewport_changed.emit(self.viewport.to_dict())
-        #             self._update_image()
-        #         return
-
         if e.type == "mousemove" and (e.buttons & 1):
-            # Panning (anchored to pan start)
+            # Panning (anchored to pan start, derived from display-space deltas)
             if self._mode == "panning":
                 if (
-                    self._start_x_full is not None
-                    and self._start_y_full is not None
+                    self._start_vx is not None
+                    and self._start_vy is not None
                     and self._pan_viewport_orig is not None
                 ):
-                    # Total delta from the start of the pan gesture
-                    dx_total = x_full - self._start_x_full
-                    dy_total = y_full - self._start_y_full
+                    orig = self._pan_viewport_orig
+                    full_w = float(orig["x_max"] - orig["x_min"])
+                    full_h = float(orig["y_max"] - orig["y_min"])
+
+                    # How far did the mouse move in display pixels?
+                    dx_v = vx - self._start_vx
+                    dy_v = vy - self._start_vy
+
+                    # Convert display delta to full-image delta using the ORIGINAL viewport.
+                    # This ensures that the point under the cursor at pan start
+                    # stays under the cursor as we drag.
+                    dx_full = dx_v * (full_w / float(self.DISPLAY_W))
+                    dy_full = dy_v * (full_h / float(self.DISPLAY_H))
 
                     # Reset viewport to the original snapshot, then pan once
                     vp = self.viewport
-                    orig = self._pan_viewport_orig
                     vp.x_min = float(orig["x_min"])
                     vp.x_max = float(orig["x_max"])
                     vp.y_min = float(orig["y_min"])
                     vp.y_max = float(orig["y_max"])
 
-                    vp.pan(dx_total, dy_total)
+                    vp.pan(dx_full, dy_full)
 
-                    # Optional: update these if you want them for debugging
+                    # Optional: keep these for debugging / introspection
                     self._last_pan_x_full = x_full
                     self._last_pan_y_full = y_full
 
-                    self.viewport_changed.emit(self.viewport.to_dict())
                     self._update_image()
                 return
 
             # Drawing new ROI (rubber-banding)
             if self._mode == "drawing" and self._selected_id is not None:
                 roi = self._rois.get(self._selected_id)
-                if roi is None or self._start_x_full is None or self._start_y_full is None:
+                if (
+                    roi is None
+                    or self._start_x_full is None
+                    or self._start_y_full is None
+                ):
                     return
 
                 roi.left = self._clamp_x(min(self._start_x_full, x_full))
@@ -628,9 +634,14 @@ class RoiImageWidget:
                 roi.top = self._clamp_y(min(self._start_y_full, y_full))
                 roi.bottom = self._clamp_y(max(self._start_y_full, y_full))
 
-                self._enforce_min_size(roi)  # sets roi, maybe should return it?
+                self._enforce_min_size(roi)
 
-                self.roi_updated.emit(roi.to_dict())
+                # Notify handlers
+                for handler in list(self._roi_updated_handlers):
+                    try:
+                        handler(roi.to_dict())
+                    except Exception:
+                        logger.exception("Error in roi_updated handler")
                 self._redraw_overlays()
                 return
 
@@ -654,9 +665,14 @@ class RoiImageWidget:
                 roi.top = self._clamp_y(t0 + dy)
                 roi.bottom = self._clamp_y(b0 + dy)
 
-                self._enforce_min_size(roi)  # optional, but safe
+                self._enforce_min_size(roi)
 
-                self.roi_updated.emit(roi.to_dict())
+                # Notify handlers
+                for handler in list(self._roi_updated_handlers):
+                    try:
+                        handler(roi.to_dict())
+                    except Exception:
+                        logger.exception("Error in roi_updated handler")
                 self._redraw_overlays()
                 return
 
@@ -679,7 +695,12 @@ class RoiImageWidget:
 
                 self._enforce_min_size(roi)
 
-                self.roi_updated.emit(roi.to_dict())
+                # Notify handlers
+                for handler in list(self._roi_updated_handlers):
+                    try:
+                        handler(roi.to_dict())
+                    except Exception:
+                        logger.exception("Error in roi_updated handler")
                 self._redraw_overlays()
                 return
 
@@ -691,6 +712,8 @@ class RoiImageWidget:
                 self._mode = "idle"
                 self._start_x_full = None
                 self._start_y_full = None
+                self._start_vx = None
+                self._start_vy = None
                 self._last_pan_x_full = None
                 self._last_pan_y_full = None
                 self._pan_viewport_orig = None
@@ -700,17 +723,32 @@ class RoiImageWidget:
                 roi = self._rois.get(self._selected_id)
                 if roi is not None:
                     # Remove zero-area ROIs
-                    # the min-size enforcement just prevents tiny sliver boxes during interaction
-                    # not entirely needed when using self._enforce_min_size(roi)
                     if int(round(roi.left)) == int(round(roi.right)) or int(
                         round(roi.top)
                     ) == int(round(roi.bottom)):
                         rid = roi.id
                         del self._rois[rid]
-                        self.roi_deleted.emit(rid)
+                        # Notify deleted handlers
+                        for handler in list(self._roi_deleted_handlers):
+                            try:
+                                handler(rid)
+                            except Exception:
+                                logger.exception("Error in roi_deleted handler")
                         self._selected_id = None
-                        self.roi_selected.emit(None)
+                        # Notify selected handlers
+                        for handler in list(self._roi_selected_handlers):
+                            try:
+                                handler(None)
+                            except Exception:
+                                logger.exception("Error in roi_selected handler")
                         self._redraw_overlays()
+                        logger.debug(f"Deleted zero-area ROI: {rid}")
+                    else:
+                        logger.info(
+                            f"Completed ROI: {roi.id} - "
+                            f"L={roi.left:.1f}, T={roi.top:.1f}, "
+                            f"R={roi.right:.1f}, B={roi.bottom:.1f}"
+                        )
 
             # Reset interaction state
             self._mode = "idle"
@@ -750,15 +788,6 @@ class RoiImageWidget:
         ctrl = bool(args.get("ctrlKey", False))
 
         # Base zoom factor: negative dy -> zoom in; positive -> out
-        # base_factor = 0.8 if dy < 0 else 1.25
-
-        # axis = self._wheel_default_axis  # "both", "x", "y"
-        # if shift and self._wheel_shift_axis is not None:
-        #     axis = self._wheel_shift_axis
-        # elif ctrl and self._wheel_ctrl_axis is not None:
-        #     axis = self._wheel_ctrl_axis
-
-        # Base zoom factor: negative dy -> zoom in; positive -> out
         base_factor = (
             self.config.zoom_in_factor if dy < 0 else self.config.zoom_out_factor
         )
@@ -793,9 +822,11 @@ class RoiImageWidget:
             factor_x=factor_x,
             factor_y=factor_y,
         )
-        self.viewport_changed.emit(self.viewport.to_dict())
         self._update_image()
-
+        logger.debug(
+            f"Zoom: axis={axis}, factor_x={factor_x:.2f}, factor_y={factor_y:.2f}, "
+            f"center=({cx:.1f}, {cy:.1f})"
+        )
 
     # ------------- internals: ROI helpers -------------
 
@@ -836,8 +867,7 @@ class RoiImageWidget:
                 - "resizing_bottom"
             or (None, None) if no ROI hit.
         """
-        # vp = self.viewport
-        vp = self._render_viewport or self.viewport
+        vp = self.viewport
         tol = self.config.edge_tolerance_px
 
         # Check most recently added first

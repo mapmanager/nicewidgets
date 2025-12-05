@@ -37,10 +37,12 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Visualization",
 ]
 
-# --- Core runtime deps (minimal) ---
+# --- Core runtime deps ---
 dependencies = [
     "nicegui>=3.3.1",
-    "psygnal>=0.14.2",
+    "numpy>=1.24.0",
+    "Pillow>=10.0.0",
+    "matplotlib>=3.7.0",
 ]
 
 [project.optional-dependencies]
@@ -48,7 +50,10 @@ dependencies = [
 pandas = ["pandas>=2.3.3"]
 polars = ["polars>=0.20.0"]
 
-# Testing, docs, dev tooling (you can extend these later)
+# Optional for running examples
+examples = ["scipy>=1.11.0"]
+
+# Testing, docs, dev tooling
 test = [
     "pytest>=7.4",
     "pytest-cov>=4.1.0",
@@ -64,10 +69,11 @@ dev = [
     "ruff",
 ]
 
-# --- uv dependency groups (kept roughly in sync with extras) ---
+# --- uv dependency groups (kept in sync with extras) ---
 [dependency-groups]
 pandas = ["pandas>=2.3.3"]
 polars = ["polars>=0.20.0"]
+examples = ["scipy>=1.11.0"]
 test = [
     "pytest>=7.4",
     "pytest-cov>=4.1.0",

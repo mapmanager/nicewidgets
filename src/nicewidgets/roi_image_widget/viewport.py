@@ -104,8 +104,8 @@ class Viewport:
             **while preserving the current width and height**.
         """
         # Current size
-        w = self.width
-        h = self.height
+        # w = self.width
+        # h = self.height
 
         # Apply raw shift
         self.x_min -= dx
