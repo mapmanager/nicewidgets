@@ -90,7 +90,14 @@ class CustomAgGrid:
 
         # Track last known selected rows (simple, works well for single selection).
         self._last_selected_rows: RowsLike = []
+        # stores last row dict(s) we consider “selected”
 
+        self._selection_origin = "internal"
+        # prevents feedback loops from programmatic selection
+        # 
+        self._last_row_id = None
+        # dedupe repeated “rowSelected” events for same row
+        
         # Local callback registries – these live and die with this widget instance.
         self._cell_edited_handlers: list[CellEditedHandler] = []
         self._row_selected_handlers: list[RowSelectedHandler] = []
@@ -413,29 +420,35 @@ class CustomAgGrid:
                 logger.exception("Error in cell_edited handler")
 
     def _on_row_selected(self, e: events.GenericEventArguments) -> None:
-        """Handle AG Grid ``rowSelected`` events from NiceGUI.
-
-        This tracks the last known selection and calls any registered
-        row-selected handlers when a row is selected (via click or otherwise).
-
-        Args:
-            e: NiceGUI event arguments instance.
-        """
         args: dict[str, Any] = e.args
-        
-        # Get row data directly (no "selected" flag check - it's not always present)
-        row_index = args.get("rowIndex")
-        row_data = args.get("data") or {}
-        
-        if row_index is None:
+
+        # 1) Prevent feedback loops from programmatic selection
+        origin = getattr(self, "_selection_origin", "internal")
+        if origin != "internal":
+            # ignore events caused by our own set_selected_row_ids(...)
             return
 
+        # 2) NiceGUI payload often looks like "rowClicked" and has no "selected"
+        row_id = args.get("rowId")
+        row_index = args.get("rowIndex")
+        row_data = args.get("data") or {}
+
+        if row_id is None and row_index is None:
+            return
+
+        # 3) De-dupe repeated events for the same row
+        if row_id is not None:
+            if getattr(self, "_last_row_id", None) == row_id:
+                return
+            self._last_row_id = row_id
+
+        if row_index is None:
+            # we still want to store the row data if available
+            row_index = 0
         i = int(row_index)
+
         self._last_selected_rows = [row_data]
 
-        logger.debug(f"Row selected: row_index={i}")
-
-        # Call registered handlers
         for handler in list(self._row_selected_handlers):
             try:
                 handler(i, row_data)
