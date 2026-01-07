@@ -441,3 +441,29 @@ class CustomAgGrid:
                 handler(i, row_data)
             except Exception:
                 logger.exception("Error in row_selected handler")
+
+    def set_selected_row_ids(self, row_ids: list[str], *, origin: str = "external") -> None:
+        """Programmatically select rows by row id.
+
+        Args:
+            row_ids: Row IDs to select. Requires GridConfig.row_id_field.
+            origin: Tag used to prevent feedback loops (e.g. 'external').
+
+        Raises:
+            ValueError: if row_id_field is not configured.
+        """
+        if not self._grid_config.row_id_field:
+            raise ValueError("GridConfig.row_id_field is required for programmatic selection")
+
+        # We temporarily mark origin so rowSelected events caused by setSelected don't re-trigger handlers.
+        self._selection_origin = origin
+
+        # Clear selection first for single-select semantics
+        if self._grid_config.selection_mode in {"single", "none"}:
+            self._grid.run_grid_method("deselectAll")
+
+        for i, rid in enumerate(row_ids):
+            clear = True if (i == 0 and self._grid_config.selection_mode == "single") else False
+            self._grid.run_row_method(rid, "setSelected", True, clear)
+
+        self._selection_origin = "internal"
