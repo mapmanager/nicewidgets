@@ -95,6 +95,9 @@ sources = ["src"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/nicewidgets"]
 
+[tool.hatch.build.targets.wheel.include]
+"src/nicewidgets/assets/**" = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
