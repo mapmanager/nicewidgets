@@ -96,7 +96,7 @@ class CustomAgGrid:
         # prevents feedback loops from programmatic selection
         # 
         self._last_row_id = None
-        # dedupe repeated “rowSelected” events for same row
+        # dedupe repeated "rowSelected" events for same row
         
         # Local callback registries – these live and die with this widget instance.
         self._cell_edited_handlers: list[CellEditedHandler] = []
@@ -125,7 +125,8 @@ class CustomAgGrid:
 
         self._grid: ui.aggrid = ui.aggrid(grid_options)
         self._grid.on("cellValueChanged", self._on_cell_value_changed)
-        self._grid.on("rowSelected", self._on_row_selected)
+        # self._grid.on("rowSelected", self._on_row_selected)
+        self._grid.on("cellClicked", self._on_row_selected)
 
 
         logger.info(
@@ -366,10 +367,10 @@ class CustomAgGrid:
         if self._grid_config.stop_editing_on_focus_loss:
             opts["stopEditingWhenCellsLoseFocus"] = True
 
-        # FIX: enable AG Grid "rowSelected" events
-        # ===========================================
-        # opts["suppressRowClickSelection"] = False
-        # opts["onRowSelected"] = True
+        # Stable row id mapping for run_row_method + selection persistence
+        if self._grid_config.row_id_field:
+            field = self._grid_config.row_id_field
+            opts["getRowId"] = f"(params) => params.data && params.data['{field}']"
 
         # Allow user-supplied extra grid options.
         opts.update(self._grid_config.extra_grid_options)
@@ -422,6 +423,10 @@ class CustomAgGrid:
     def _on_row_selected(self, e: events.GenericEventArguments) -> None:
         args: dict[str, Any] = e.args
 
+        logger.info('xxx')
+        # print(e)
+        from pprint import pprint
+        pprint(args)
         # 1) Prevent feedback loops from programmatic selection
         origin = getattr(self, "_selection_origin", "internal")
         if origin != "internal":
@@ -437,9 +442,16 @@ class CustomAgGrid:
             return
 
         # 3) De-dupe repeated events for the same row
+        last_row_id = getattr(self, "_last_row_id", None)
         if row_id is not None:
-            if getattr(self, "_last_row_id", None) == row_id:
+            if last_row_id == row_id:
+                logger.info(
+                    f"_on_row_selected: deduplicating - row_id={row_id} same as last_row_id={last_row_id}"
+                )
                 return
+            logger.info(
+                f"_on_row_selected: processing - row_id={row_id}, last_row_id={last_row_id}"
+            )
             self._last_row_id = row_id
 
         if row_index is None:
@@ -449,6 +461,9 @@ class CustomAgGrid:
 
         self._last_selected_rows = [row_data]
 
+        logger.info(
+            f"_on_row_selected: calling {len(self._row_selected_handlers)} handlers for row_index={i}"
+        )
         for handler in list(self._row_selected_handlers):
             try:
                 handler(i, row_data)
