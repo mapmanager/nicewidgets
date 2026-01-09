@@ -125,7 +125,7 @@ class CustomAgGrid:
 
         self._grid: ui.aggrid = ui.aggrid(grid_options)
         self._grid.on("cellValueChanged", self._on_cell_value_changed)
-        # self._grid.on("rowSelected", self._on_row_selected)
+        # self._grid.on("rowSelected", self._on_row_selected)  # was this
         self._grid.on("cellClicked", self._on_row_selected)
 
 
@@ -370,7 +370,8 @@ class CustomAgGrid:
         # Stable row id mapping for run_row_method + selection persistence
         if self._grid_config.row_id_field:
             field = self._grid_config.row_id_field
-            opts["getRowId"] = f"(params) => params.data && params.data['{field}']"
+            opts[":getRowId"] = f"(params) => params.data && params.data['{field}']"
+            # logger.warning(f'opts[":getRowId"] is: "{opts[":getRowId"]}"')
 
         # Allow user-supplied extra grid options.
         opts.update(self._grid_config.extra_grid_options)
@@ -424,9 +425,9 @@ class CustomAgGrid:
         args: dict[str, Any] = e.args
 
         logger.info('xxx')
-        # print(e)
         from pprint import pprint
         pprint(args)
+
         # 1) Prevent feedback loops from programmatic selection
         origin = getattr(self, "_selection_origin", "internal")
         if origin != "internal":
@@ -442,16 +443,9 @@ class CustomAgGrid:
             return
 
         # 3) De-dupe repeated events for the same row
-        last_row_id = getattr(self, "_last_row_id", None)
         if row_id is not None:
-            if last_row_id == row_id:
-                logger.info(
-                    f"_on_row_selected: deduplicating - row_id={row_id} same as last_row_id={last_row_id}"
-                )
+            if getattr(self, "_last_row_id", None) == row_id:
                 return
-            logger.info(
-                f"_on_row_selected: processing - row_id={row_id}, last_row_id={last_row_id}"
-            )
             self._last_row_id = row_id
 
         if row_index is None:
@@ -461,9 +455,6 @@ class CustomAgGrid:
 
         self._last_selected_rows = [row_data]
 
-        logger.info(
-            f"_on_row_selected: calling {len(self._row_selected_handlers)} handlers for row_index={i}"
-        )
         for handler in list(self._row_selected_handlers):
             try:
                 handler(i, row_data)
