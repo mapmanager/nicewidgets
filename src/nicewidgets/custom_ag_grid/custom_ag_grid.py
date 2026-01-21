@@ -127,6 +127,7 @@ class CustomAgGrid:
         self._grid.on("cellValueChanged", self._on_cell_value_changed)
         # self._grid.on("rowSelected", self._on_row_selected)  # was this
         self._grid.on("cellClicked", self._on_row_selected)
+        self._grid.on("cellKeyDown", self._on_cell_key_down)
 
 
         logger.info(
@@ -373,6 +374,7 @@ class CustomAgGrid:
             opts[":getRowId"] = f"(params) => params.data && params.data['{field}']"
             # logger.warning(f'opts[":getRowId"] is: "{opts[":getRowId"]}"')
 
+
         # Allow user-supplied extra grid options.
         opts.update(self._grid_config.extra_grid_options)
 
@@ -460,6 +462,17 @@ class CustomAgGrid:
                 handler(i, row_data)
             except Exception:
                 logger.exception("Error in row_selected handler")
+
+    def _on_cell_key_down(self, e: events.GenericEventArguments) -> None:
+        """Handle keyboard events inside grid cells (for row navigation).
+
+        Currently logs event args to discover the payload structure.
+        Will be refined to handle ArrowUp/ArrowDown for row selection once
+        we see the actual event structure.
+        """
+        from pprint import pformat
+        logger.info(f"AGGrid cellKeyDown event args:\n{pformat(e.args)}")
+        # For now, do nothing else. We'll refine once we see what e.args looks like.
 
     def set_selected_row_ids(self, row_ids: list[str], *, origin: str = "external") -> None:
         """Programmatically select rows by row id.
