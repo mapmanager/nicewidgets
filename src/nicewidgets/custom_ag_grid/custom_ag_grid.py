@@ -110,6 +110,8 @@ class CustomAgGrid:
             container_classes += " aggrid-zebra"
         if self._grid_config.hover_highlight:
             container_classes += " aggrid-hover"
+        else:
+            container_classes += " aggrid-no-hover"
         if self._grid_config.tight_layout:
             container_classes += " aggrid-tight"
 
@@ -231,7 +233,7 @@ class CustomAgGrid:
         self._rows = self._convert_input_to_rows(data)
         self._grid.options["rowData"] = self._rows
         self._grid.update()
-        logger.debug(f"set_data: updated grid with {len(self._rows)} rows")
+        # logger.debug(f"set_data: updated grid with {len(self._rows)} rows")
 
     # ------------------------------------------------------------------
     # Selection helpers
@@ -292,6 +294,21 @@ class CustomAgGrid:
             AG Grid.
         """
         defs: list[dict[str, Any]] = []
+
+        if self._grid_config.show_row_index:
+            defs.append(
+                {
+                    "headerName": self._grid_config.row_index_header,
+                    "valueGetter": "node.rowIndex + 1",
+                    "editable": False,
+                    "sortable": False,
+                    "filter": False,
+                    "resizable": False,
+                    "width": self._grid_config.row_index_width,
+                    "pinned": "left",
+                    "cellClass": "ag-cell-right",
+                }
+            )
 
         for col in self._columns:
             col_def: dict[str, Any] = {
@@ -367,6 +384,9 @@ class CustomAgGrid:
 
         if self._grid_config.stop_editing_on_focus_loss:
             opts["stopEditingWhenCellsLoseFocus"] = True
+
+        if not self._grid_config.hover_highlight:
+            opts["suppressRowHoverHighlight"] = True
 
         # Stable row id mapping for run_row_method + selection persistence
         if self._grid_config.row_id_field:

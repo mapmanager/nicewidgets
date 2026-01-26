@@ -6,6 +6,7 @@ from nicegui import ui
 # AG Grid theme CSS with optional behavior controlled via container classes:
 # - .aggrid-zebra   → zebra rows
 # - .aggrid-hover   → row hover highlight
+# - .aggrid-no-hover → remove row hover highlight (override theme default)
 # - .aggrid-tight   → tighter padding + smaller font
 _THEME_CSS = """
 <style>
@@ -20,6 +21,12 @@ _THEME_CSS = """
 /* Hover highlight (only when parent has .aggrid-hover class) */
 .aggrid-hover .ag-row-hover .ag-cell {
     background-color: #e8f3ff;
+}
+
+/* Disable hover highlight (override theme default hover styling) */
+.aggrid-no-hover .ag-row-hover .ag-cell,
+.aggrid-no-hover .ag-row-hover {
+    background-color: inherit;
 }
 
 /* Tighter layout (only when parent has .aggrid-tight class) */

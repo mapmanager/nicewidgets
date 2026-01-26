@@ -121,6 +121,8 @@ class CustomAgGrid_v2:
             container_classes += " aggrid-zebra"
         if self._grid_config.hover_highlight:
             container_classes += " aggrid-hover"
+        else:
+            container_classes += " aggrid-no-hover"
         if self._grid_config.tight_layout:
             container_classes += " aggrid-tight"
 
@@ -148,7 +150,7 @@ class CustomAgGrid_v2:
 
         # Optional: keep a simple debug click hook (safe payload, helpful during dev)
         # You can remove later.
-        self._grid.on("cellClicked", lambda e: logger.debug(f"cellClicked args={e.args}"))
+        # self._grid.on("cellClicked", lambda e: logger.debug(f"cellClicked args={e.args}"))
 
         logger.info(
             "CustomAgGrid_v2 initialized: rows=%s cols=%s selection=%s row_id_field=%s",
@@ -255,6 +257,21 @@ class CustomAgGrid_v2:
 
     def _build_column_defs(self) -> list[dict[str, Any]]:
         defs: list[dict[str, Any]] = []
+
+        if self._grid_config.show_row_index:
+            defs.append(
+                {
+                    "headerName": self._grid_config.row_index_header,
+                    "valueGetter": "node.rowIndex + 1",
+                    "editable": False,
+                    "sortable": False,
+                    "filter": False,
+                    "resizable": False,
+                    "width": self._grid_config.row_index_width,
+                    "pinned": "left",
+                    "cellClass": "ag-cell-right",
+                }
+            )
         for col in self._columns:
             col_def: dict[str, Any] = {
                 "headerName": col.header or col.field,
@@ -313,6 +330,9 @@ class CustomAgGrid_v2:
         # stop editing on focus loss (nice UX)
         if self._grid_config.stop_editing_on_focus_loss:
             opts["stopEditingWhenCellsLoseFocus"] = True
+
+        if not self._grid_config.hover_highlight:
+            opts["suppressRowHoverHighlight"] = True
 
         # stable row id
         field = self._row_id_field
@@ -382,7 +402,7 @@ class CustomAgGrid_v2:
 
         self._last_selected_rows = [dict(data)]
 
-        logger.debug("selection_change rowIndex=%s rowId=%s source=%s key=%s", i, row_id_str, args.get("source"), args.get("key"))
+        # logger.debug("selection_change rowIndex=%s rowId=%s source=%s key=%s", i, row_id_str, args.get("source"), args.get("key"))
 
         for handler in list(self._row_selected_handlers):
             try:
@@ -415,7 +435,7 @@ class CustomAgGrid_v2:
         # Keep internal data in sync
         self._rows[i][field] = new_value
 
-        logger.debug("cell_edit_finished row=%s field=%s %r -> %r", i, field, old_value, new_value)
+        # logger.debug("cell_edit_finished row=%s field=%s %r -> %r", i, field, old_value, new_value)
 
         for handler in list(self._cell_edited_handlers):
             try:

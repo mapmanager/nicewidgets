@@ -68,6 +68,10 @@ class GridConfig:
         row_id_field: (gpt 20260106) Optional field name used as a stable row id.
             If set, AG Grid uses it for row identity (enables programmatic selection
             via run_row_method and makes selection robust across data refreshes).
+        show_row_index: If True, prepend a non-editable index column that tracks
+            the current displayed row order (after sort/filter).
+        row_index_header: Column header label for the index column.
+        row_index_width: Pixel width for the index column.
         extra_grid_options: Arbitrary additional options merged into the
             AG Grid options dictionary.
     """
@@ -77,7 +81,7 @@ class GridConfig:
     theme_class: str = "ag-theme-alpine"
 
     zebra_rows: bool = True
-    hover_highlight: bool = True
+    hover_highlight: bool = False
     tight_layout: bool = True
 
     row_height: int = 28
@@ -87,5 +91,9 @@ class GridConfig:
 
     # gpt 20260106: stable row id support (e.g. use "path" for file tables)
     row_id_field: Optional[str] = None
+
+    show_row_index: bool = False
+    row_index_header: str = "#"
+    row_index_width: int = 100  # 60
 
     extra_grid_options: dict[str, Any] = field(default_factory=dict)
