@@ -119,7 +119,8 @@ class CustomAgGrid_v2:
         self._row_selected_handlers: list[RowSelectedHandler] = []
 
         # container classes
-        container_classes = f"w-full {self._grid_config.height} {self._grid_config.theme_class}"
+        # container_classes = f"w-full {self._grid_config.height} {self._grid_config.theme_class}"
+        container_classes = f"w-full h-full {self._grid_config.theme_class}"
         if self._grid_config.zebra_rows:
             container_classes += " aggrid-zebra"
         if self._grid_config.hover_highlight:
@@ -145,7 +146,9 @@ class CustomAgGrid_v2:
             enable_edit_on_double_click=enable_edit_on_double_click,
         )
 
-        self._grid: ui.aggrid = ui.aggrid(grid_options)
+        # abb 20260129 trying to fix custom table so it is top aligned
+        # self._grid: ui.aggrid = ui.aggrid(grid_options)
+        self._grid = ui.aggrid(grid_options).classes("w-full h-full").style("height: 100%;")
 
         # Register Python listeners for emitted events
         ui.on(self._evt_select, self._on_select_emitted)
@@ -200,6 +203,9 @@ class CustomAgGrid_v2:
 
     def set_data(self, data: DataLike) -> None:
         """Replace grid data and refresh."""
+        # logger.debug('nicegui is not updating table during runtime -->> use nicegui 3.6.0')
+        # logger.debug(data)
+
         previous_selected_ids: list[str] = []
         if self._last_selected_rows:
             for row in self._last_selected_rows:
@@ -210,6 +216,8 @@ class CustomAgGrid_v2:
             previous_selected_ids.append(str(self._last_selected_row_id))
 
         self._rows = self._convert_input_to_rows(data)
+        logger.debug(f'  self._rows is:')
+        # logger.debug(self._rows)
         self._grid.options["rowData"] = self._rows
         self._grid.update()
 
@@ -303,19 +311,42 @@ class CustomAgGrid_v2:
         defs: list[dict[str, Any]] = []
 
         if self._grid_config.show_row_index:
+            # defs.append(
+            #     {
+            #         "headerName": self._grid_config.row_index_header,
+            #         "valueGetter": "node.rowIndex + 1",
+            #         "editable": False,
+            #         "sortable": False,
+            #         "filter": False,
+            #         "resizable": self._grid_config.row_index_resizable,
+            #         "width": self._grid_config.row_index_width,
+            #         "pinned": "left",
+            #         "cellClass": "ag-cell-right",
+            #     }
+            # )
             defs.append(
                 {
-                    "headerName": self._grid_config.row_index_header,
+                    "headerName": self._grid_config.row_index_header,  # "#"
+                    "field": "__row_index__",  # or your valueGetter-only col
                     "valueGetter": "node.rowIndex + 1",
-                    "editable": False,
+                    "width": self._grid_config.row_index_width,
+                    "minWidth": self._grid_config.row_index_width,
+                    "maxWidth": self._grid_config.row_index_width,  # optional but makes it firm
+                    "resizable": self._grid_config.row_index_resizable,
                     "sortable": False,
                     "filter": False,
-                    "resizable": self._grid_config.row_index_resizable,
-                    "width": self._grid_config.row_index_width,
                     "pinned": "left",
-                    "cellClass": "ag-cell-right",
+                    "lockPosition": True,
+                    "suppressMovable": True,
+
+                    # Critical if you call sizeColumnsToFit anywhere:
+                    "suppressSizeToFit": True,
+
+                    # Critical if you set defaultColDef.flex globally:
+                    "flex": 0,
                 }
             )
+
         for col in self._columns:
             col_def: dict[str, Any] = {
                 "headerName": col.header or col.field,
@@ -366,7 +397,7 @@ class CustomAgGrid_v2:
         opts: dict[str, Any] = {
             "columnDefs": column_defs,
             "rowData": row_data,
-            "defaultColDef": {"sortable": True, "filter": True, "resizable": True},
+            "defaultColDef": {"sortable": True, "filter": False, "resizable": True},
             "rowHeight": self._grid_config.row_height,
             "headerHeight": self._grid_config.header_height,
         }

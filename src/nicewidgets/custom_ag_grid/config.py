@@ -43,7 +43,7 @@ class ColumnConfig:
     choices: Optional[Iterable[Any] | Literal["unique"]] = None
 
     sortable: bool = True
-    filterable: bool = True
+    filterable: bool = False
     resizable: bool = True
 
     extra_grid_options: dict[str, Any] = field(default_factory=dict)
@@ -78,7 +78,11 @@ class GridConfig:
     """
 
     selection_mode: SelectionMode = "none"
-    height: str = "20rem"
+    # height: str = "20rem"
+    # height: str = "h-full"
+    # height: str = '100%'
+    # height: str = "h-96"
+
     theme_class: str = "ag-theme-alpine"
 
     zebra_rows: bool = True
@@ -95,7 +99,7 @@ class GridConfig:
 
     show_row_index: bool = False
     row_index_header: str = "#"
-    row_index_width: int = 100  # 60
+    row_index_width: int = 60  # need 60 to fit index >= 100
     row_index_resizable: bool = True
 
     extra_grid_options: dict[str, Any] = field(default_factory=dict)
