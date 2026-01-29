@@ -86,8 +86,11 @@ class CustomAgGrid_v2:
         enable_keyboard_row_nav: bool = True,
         enable_edit_on_double_click: bool = True,
         inject_hide_cell_focus_css: bool = True,
+        runtimeWidgetName: str = "UNDEFINED",
     ) -> None:
         ensure_aggrid_theme()
+
+        self._runtimeWidgetName: str = runtimeWidgetName
 
         self._rows: RowsLike = self._convert_input_to_rows(data)
         self._columns: list[ColumnConfig] = columns
@@ -153,7 +156,8 @@ class CustomAgGrid_v2:
         # self._grid.on("cellClicked", lambda e: logger.debug(f"cellClicked args={e.args}"))
 
         logger.info(
-            "CustomAgGrid_v2 initialized: rows=%s cols=%s selection=%s row_id_field=%s",
+            "pyinstaller initialized: _runtimeWidgetName=%s rows=%s cols=%s selection=%s row_id_field=%s",
+            self._runtimeWidgetName,
             len(self._rows),
             len(self._columns),
             self._grid_config.selection_mode,
@@ -196,6 +200,15 @@ class CustomAgGrid_v2:
 
     def set_data(self, data: DataLike) -> None:
         """Replace grid data and refresh."""
+        previous_selected_ids: list[str] = []
+        if self._last_selected_rows:
+            for row in self._last_selected_rows:
+                row_id = row.get(self._row_id_field)
+                if row_id is not None:
+                    previous_selected_ids.append(str(row_id))
+        elif self._last_selected_row_id is not None:
+            previous_selected_ids.append(str(self._last_selected_row_id))
+
         self._rows = self._convert_input_to_rows(data)
         self._grid.options["rowData"] = self._rows
         self._grid.update()
@@ -203,6 +216,30 @@ class CustomAgGrid_v2:
         # Reset selection tracking (caller can re-select programmatically if desired)
         self._last_selected_rows = []
         self._last_selected_row_id = None
+
+        if not previous_selected_ids:
+            return
+
+        existing_ids = {
+            str(row[self._row_id_field])
+            for row in self._rows
+            if self._row_id_field in row and row[self._row_id_field] is not None
+        }
+        keep_ids = [rid for rid in previous_selected_ids if rid in existing_ids]
+        if not keep_ids:
+            return
+
+        if self._grid_config.selection_mode == "single":
+            keep_ids = keep_ids[:1]
+
+        # Update tracking state and restore selection visually.
+        self._last_selected_row_id = keep_ids[0]
+        self._last_selected_rows = [
+            dict(row)
+            for row in self._rows
+            if str(row.get(self._row_id_field)) in keep_ids
+        ]
+        self.set_selected_row_ids(keep_ids, origin="restore")
 
     # ------------------------------------------------------------------
     # Programmatic selection
@@ -214,15 +251,22 @@ class CustomAgGrid_v2:
         Notes:
         - requires GridConfig.row_id_field
         - for single-select, only the first rowId is used
+        - passing empty list clears selection and internal tracking state
         """
         self._selection_origin = origin
 
-        if self._grid_config.selection_mode in {"single", "none"}:
-            self._grid.run_grid_method("deselectAll")
-
+        # Clear selection for all modes when row_ids is empty
         if not row_ids:
+            self._grid.run_grid_method("deselectAll")
+            # Clear internal tracking state
+            self._last_selected_rows = []
+            self._last_selected_row_id = None
             self._selection_origin = "internal"
             return
+
+        # For single/none mode, clear all first before selecting
+        if self._grid_config.selection_mode in {"single", "none"}:
+            self._grid.run_grid_method("deselectAll")
 
         if self._grid_config.selection_mode == "single":
             row_ids = row_ids[:1]
@@ -266,7 +310,7 @@ class CustomAgGrid_v2:
                     "editable": False,
                     "sortable": False,
                     "filter": False,
-                    "resizable": False,
+                    "resizable": self._grid_config.row_index_resizable,
                     "width": self._grid_config.row_index_width,
                     "pinned": "left",
                     "cellClass": "ag-cell-right",

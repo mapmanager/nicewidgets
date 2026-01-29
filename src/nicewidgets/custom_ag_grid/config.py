@@ -72,6 +72,7 @@ class GridConfig:
             the current displayed row order (after sort/filter).
         row_index_header: Column header label for the index column.
         row_index_width: Pixel width for the index column.
+        row_index_resizable: Whether the row index column can be resized by the user.
         extra_grid_options: Arbitrary additional options merged into the
             AG Grid options dictionary.
     """
@@ -95,5 +96,6 @@ class GridConfig:
     show_row_index: bool = False
     row_index_header: str = "#"
     row_index_width: int = 100  # 60
+    row_index_resizable: bool = True
 
     extra_grid_options: dict[str, Any] = field(default_factory=dict)
