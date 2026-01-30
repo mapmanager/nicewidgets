@@ -8,18 +8,25 @@ from nicegui import ui
 # - .aggrid-hover   → row hover highlight
 # - .aggrid-no-hover → remove row hover highlight (override theme default)
 # - .aggrid-tight   → tighter padding + smaller font
+# NOTE: zebra/hover rules avoid `.ag-row-selected` so the built-in blue selection
+# styling from the AG Grid theme remains visible even when these helpers apply.
 _THEME_CSS = """
 <style>
-/* Zebra rows (only when parent has .aggrid-zebra class) */
-.aggrid-zebra .ag-row-even .ag-cell {
+/* Zebra rows (scoped to grid element) */
+.aggrid-scope.aggrid-zebra .ag-row-even:not(.ag-row-selected) .ag-cell {
     background-color: #f7f7f7;
 }
-.aggrid-zebra .ag-row-odd .ag-cell {
+.aggrid-scope.aggrid-zebra .ag-row-odd:not(.ag-row-selected) .ag-cell {
     background-color: #ffffff;
+}
+/* Keep text readable when zebra/hover backgrounds apply */
+.aggrid-zebra .ag-cell,
+.aggrid-hover .ag-cell {
+    color: var(--ag-foreground-color, inherit);
 }
 
 /* Hover highlight (only when parent has .aggrid-hover class) */
-.aggrid-hover .ag-row-hover .ag-cell {
+.aggrid-hover .ag-row-hover:not(.ag-row-selected) .ag-cell {
     background-color: #e8f3ff;
 }
 

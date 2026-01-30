@@ -119,8 +119,9 @@ class CustomAgGrid_v2:
         self._row_selected_handlers: list[RowSelectedHandler] = []
 
         # container classes
+        # 20250129: ensure grid container can shrink horizontally in flex layouts
         # container_classes = f"w-full {self._grid_config.height} {self._grid_config.theme_class}"
-        container_classes = f"w-full h-full {self._grid_config.theme_class}"
+        container_classes = f"w-full h-full flex-1 min-h-0 min-w-0 {self._grid_config.theme_class}"
         if self._grid_config.zebra_rows:
             container_classes += " aggrid-zebra"
         if self._grid_config.hover_highlight:
@@ -147,8 +148,17 @@ class CustomAgGrid_v2:
         )
 
         # abb 20260129 trying to fix custom table so it is top aligned
+        # 20250129: theme class must be on the grid element for selection styling
         # self._grid: ui.aggrid = ui.aggrid(grid_options)
-        self._grid = ui.aggrid(grid_options).classes("w-full h-full").style("height: 100%;")
+        # abb cursor wrapping to fix and keep grid left aligned
+        # self._grid = ui.aggrid(grid_options).classes("w-full h-full").style("height: 100%;")
+
+        with self._container:
+            self._grid = (
+                ui.aggrid(grid_options)
+                .classes(f"w-full h-full {self._grid_config.theme_class} aggrid-scope")
+                .style("height: 100%;")
+            )
 
         # Register Python listeners for emitted events
         ui.on(self._evt_select, self._on_select_emitted)
