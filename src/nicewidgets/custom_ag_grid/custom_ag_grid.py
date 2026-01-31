@@ -103,9 +103,8 @@ class CustomAgGrid:
         self._row_selected_handlers: list[RowSelectedHandler] = []
 
         # Container with theme and style toggles
-        container_classes = (
-            f"w-full {self._grid_config.height} {self._grid_config.theme_class}"
-        )
+        height_class = getattr(self._grid_config, "height", "")
+        container_classes = f"w-full {height_class} {self._grid_config.theme_class}".strip()
         if self._grid_config.zebra_rows:
             container_classes += " aggrid-zebra"
         if self._grid_config.hover_highlight:

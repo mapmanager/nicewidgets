@@ -22,5 +22,5 @@ def test_grid_config_defaults() -> None:
     cfg = GridConfig()
     assert cfg.selection_mode == "none"
     assert cfg.zebra_rows is True
-    assert cfg.hover_highlight is True
+    assert cfg.hover_highlight is False
     assert cfg.tight_layout is True

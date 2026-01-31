@@ -168,14 +168,14 @@ class CustomAgGrid_v2:
         # You can remove later.
         # self._grid.on("cellClicked", lambda e: logger.debug(f"cellClicked args={e.args}"))
 
-        logger.info(
-            "pyinstaller initialized: _runtimeWidgetName=%s rows=%s cols=%s selection=%s row_id_field=%s",
-            self._runtimeWidgetName,
-            len(self._rows),
-            len(self._columns),
-            self._grid_config.selection_mode,
-            self._row_id_field,
-        )
+        # logger.info(
+        #     "pyinstaller initialized: _runtimeWidgetName=%s rows=%s cols=%s selection=%s row_id_field=%s",
+        #     self._runtimeWidgetName,
+        #     len(self._rows),
+        #     len(self._columns),
+        #     self._grid_config.selection_mode,
+        #     self._row_id_field,
+        # )
 
     # ------------------------------------------------------------------
     # Public accessors
@@ -226,7 +226,7 @@ class CustomAgGrid_v2:
             previous_selected_ids.append(str(self._last_selected_row_id))
 
         self._rows = self._convert_input_to_rows(data)
-        logger.debug(f'  self._rows is:')
+        # logger.debug(f'  self._rows is:')
         # logger.debug(self._rows)
         self._grid.options["rowData"] = self._rows
         self._grid.update()
