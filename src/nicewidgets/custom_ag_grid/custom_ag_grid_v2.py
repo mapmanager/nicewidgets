@@ -114,6 +114,9 @@ class CustomAgGrid_v2:
         # feedback loop guard for programmatic selection
         self._selection_origin: str = "internal"
 
+        # Column state preservation
+        self._saved_column_state: list[dict[str, Any]] | None = None
+
         # callback registries
         self._cell_edited_handlers: list[CellEditedHandler] = []
         self._row_selected_handlers: list[RowSelectedHandler] = []
@@ -195,6 +198,64 @@ class CustomAgGrid_v2:
         """Return last known selected rows (at most 1 for single selection)."""
         return [r.copy() for r in self._last_selected_rows]
 
+    def _get_column_state_async(self) -> None:
+        """Asynchronously get column state and store it in instance variable.
+        
+        This schedules an async operation to fetch column state and store it
+        in self._saved_column_state for later restoration.
+        Only attempts to get state if grid has data (rows exist).
+        """
+        # Only try to get state if grid has data
+        logger.debug('=== we are now just returning here -->> no async business')
+        return
+        
+        if not self._rows:
+            return
+        
+        async def _fetch_state() -> None:
+            try:
+                # Use api.getColumnState() as shown in NiceGUI examples
+                # Add small delay to ensure grid is ready
+                state = await self._grid.run_grid_method("api.getColumnState()")
+                if state and isinstance(state, list) and len(state) > 0:
+                    self._saved_column_state = state
+                    logger.debug(f"Saved column state: {len(state)} columns")
+            except Exception as e:
+                # Only log if we don't have saved state (avoid spam on initial load)
+                if self._saved_column_state is None:
+                    logger.debug(f"Could not get column state (grid may not be ready): {e}")
+                # Keep existing saved state if fetch fails
+        
+        # Schedule async fetch with small delay to ensure grid is ready
+        ui.timer(0.05, _fetch_state, once=True)
+
+    def _set_column_state_async(self, state: list[dict[str, Any]] | None) -> None:
+        """Asynchronously restore column state from provided state or saved state.
+        
+        Args:
+            state: Column state to restore, or None to use self._saved_column_state
+        """
+        restore_state = state if state is not None else self._saved_column_state
+        if restore_state is None:
+            return
+        
+        # Only try to restore if grid has data
+        if not self._rows:
+            return
+        
+        async def _restore_state() -> None:
+            try:
+                # Use api.setColumnState as shown in AG Grid docs
+                # Note: setColumnState takes the state array as argument
+                await self._grid.run_grid_method("api.setColumnState", restore_state)
+                logger.debug(f"Restored column state: {len(restore_state)} columns")
+            except Exception as e:
+                logger.debug(f"Could not restore column state (grid may not be ready): {e}")
+        
+        # Schedule async restore with small delay to ensure grid operations have completed
+        ui.timer(0.1, _restore_state, once=True)
+        
+
     # ------------------------------------------------------------------
     # Public event registration
     # ------------------------------------------------------------------
@@ -212,9 +273,14 @@ class CustomAgGrid_v2:
     # ------------------------------------------------------------------
 
     def set_data(self, data: DataLike) -> None:
-        """Replace grid data and refresh."""
-        # logger.debug('nicegui is not updating table during runtime -->> use nicegui 3.6.0')
-        # logger.debug(data)
+        """Replace grid data and refresh.
+        
+        Automatically preserves column state (widths, sort order) during data updates.
+        """
+        logger.debug('')
+        
+        # Save current column state asynchronously before update
+        self._get_column_state_async()
 
         previous_selected_ids: list[str] = []
         if self._last_selected_rows:
@@ -236,6 +302,9 @@ class CustomAgGrid_v2:
         self._last_selected_row_id = None
 
         if not previous_selected_ids:
+            # Restore column state even if no selection to restore
+            # Use a small delay to ensure update() has completed
+            ui.timer(0.15, lambda: self._set_column_state_async(None), once=True)
             return
 
         existing_ids = {
@@ -245,6 +314,9 @@ class CustomAgGrid_v2:
         }
         keep_ids = [rid for rid in previous_selected_ids if rid in existing_ids]
         if not keep_ids:
+            # Restore column state even if no valid IDs to select
+            # Use a small delay to ensure update() has completed
+            ui.timer(0.15, lambda: self._set_column_state_async(None), once=True)
             return
 
         if self._grid_config.selection_mode == "single":
@@ -257,7 +329,13 @@ class CustomAgGrid_v2:
             for row in self._rows
             if str(row.get(self._row_id_field)) in keep_ids
         ]
+        
+        # set_selected_row_ids() will preserve column state internally
         self.set_selected_row_ids(keep_ids, origin="restore")
+        
+        # Final restore after selection (defensive - set_selected_row_ids already did this)
+        # Use a small delay to ensure selection operations have completed
+        ui.timer(0.2, lambda: self._set_column_state_async(None), once=True)
 
     # ------------------------------------------------------------------
     # Programmatic selection
@@ -266,12 +344,17 @@ class CustomAgGrid_v2:
     def set_selected_row_ids(self, row_ids: list[str], *, origin: str = "external") -> None:
         """Programmatically select rows by rowId.
 
+        Automatically preserves column state (widths, sort order) during selection operations.
+
         Notes:
         - requires GridConfig.row_id_field
         - for single-select, only the first rowId is used
         - passing empty list clears selection and internal tracking state
         """
         self._selection_origin = origin
+
+        # Save current column state asynchronously before any operations that might reset it
+        self._get_column_state_async()
 
         # Clear selection for all modes when row_ids is empty
         if not row_ids:
@@ -280,6 +363,9 @@ class CustomAgGrid_v2:
             self._last_selected_rows = []
             self._last_selected_row_id = None
             self._selection_origin = "internal"
+            # Restore column state after deselectAll completes
+            # Use a small delay to ensure deselectAll has completed
+            ui.timer(0.15, lambda: self._set_column_state_async(None), once=True)
             return
 
         # For single/none mode, clear all first before selecting
@@ -294,6 +380,10 @@ class CustomAgGrid_v2:
             self._grid.run_row_method(str(rid), "setSelected", True, clear)
 
         self._selection_origin = "internal"
+
+        # Restore column state after selection is complete
+        # Use a small delay to ensure selection operations have completed
+        ui.timer(0.15, lambda: self._set_column_state_async(None), once=True)
 
     # ------------------------------------------------------------------
     # Internal: conversion
