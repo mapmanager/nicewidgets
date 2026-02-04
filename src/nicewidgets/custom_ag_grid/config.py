@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable, Literal, Optional
 
 
-EditorType = Literal["auto", "text", "select"]
+EditorType = Literal["auto", "text", "select", "checkbox"]
 SelectionMode = Literal["none", "single", "multiple"]
 
 
@@ -99,7 +99,7 @@ class GridConfig:
 
     show_row_index: bool = False
     row_index_header: str = "#"
-    row_index_width: int = 60  # need 60 to fit index >= 100
+    row_index_width: int = 45  # need 60 to fit index >= 100
     row_index_resizable: bool = True
 
     extra_grid_options: dict[str, Any] = field(default_factory=dict)

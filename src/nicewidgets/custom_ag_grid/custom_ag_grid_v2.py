@@ -227,7 +227,17 @@ class CustomAgGrid_v2:
                 # Keep existing saved state if fetch fails
         
         # Schedule async fetch with small delay to ensure grid is ready
-        ui.timer(0.05, _fetch_state, once=True)
+        # Wrap in try/except to handle case where parent element is deleted
+        def _safe_fetch_state() -> None:
+            try:
+                _fetch_state()
+            except RuntimeError as e:
+                if "parent slot" in str(e).lower() or "deleted" in str(e).lower():
+                    # Parent element was deleted, timer is no longer valid - silently ignore
+                    return
+                raise
+        
+        ui.timer(0.05, _safe_fetch_state, once=True)
 
     def _set_column_state_async(self, state: list[dict[str, Any]] | None) -> None:
         """Asynchronously restore column state from provided state or saved state.
@@ -235,6 +245,9 @@ class CustomAgGrid_v2:
         Args:
             state: Column state to restore, or None to use self._saved_column_state
         """
+        logger.debug('=== we are now just returning here -->> no async business')
+        return
+
         restore_state = state if state is not None else self._saved_column_state
         if restore_state is None:
             return
@@ -253,7 +266,17 @@ class CustomAgGrid_v2:
                 logger.debug(f"Could not restore column state (grid may not be ready): {e}")
         
         # Schedule async restore with small delay to ensure grid operations have completed
-        ui.timer(0.1, _restore_state, once=True)
+        # Wrap in try/except to handle case where parent element is deleted
+        def _safe_restore_state() -> None:
+            try:
+                _restore_state()
+            except RuntimeError as e:
+                if "parent slot" in str(e).lower() or "deleted" in str(e).lower():
+                    # Parent element was deleted, timer is no longer valid - silently ignore
+                    return
+                raise
+        
+        ui.timer(0.1, _safe_restore_state, once=True)
         
 
     # ------------------------------------------------------------------
@@ -277,10 +300,11 @@ class CustomAgGrid_v2:
         
         Automatically preserves column state (widths, sort order) during data updates.
         """
-        logger.debug('')
+        # logger.debug('')
         
         # Save current column state asynchronously before update
-        self._get_column_state_async()
+        logger.error('20260203 removed due to timer error')
+        # self._get_column_state_async()
 
         previous_selected_ids: list[str] = []
         if self._last_selected_rows:
@@ -301,11 +325,22 @@ class CustomAgGrid_v2:
         self._last_selected_rows = []
         self._last_selected_row_id = None
 
-        if not previous_selected_ids:
-            # Restore column state even if no selection to restore
-            # Use a small delay to ensure update() has completed
-            ui.timer(0.15, lambda: self._set_column_state_async(None), once=True)
-            return
+        # abb 20260203 timer
+        # if not previous_selected_ids:
+        #     # Restore column state even if no selection to restore
+        #     # Use a small delay to ensure update() has completed
+        #     # Wrap in try/except to handle case where parent element is deleted
+        #     def _safe_restore() -> None:
+        #         try:
+        #             pass
+        #             # self._set_column_state_async(None)
+        #         except RuntimeError as e:
+        #             if "parent slot" in str(e).lower() or "deleted" in str(e).lower():
+        #                 # Parent element was deleted, timer is no longer valid - silently ignore
+        #                 return
+        #             raise
+        #     ui.timer(0.15, _safe_restore, once=True)
+        #     return
 
         existing_ids = {
             str(row[self._row_id_field])
@@ -313,10 +348,25 @@ class CustomAgGrid_v2:
             if self._row_id_field in row and row[self._row_id_field] is not None
         }
         keep_ids = [rid for rid in previous_selected_ids if rid in existing_ids]
+        
+        # abb 20260203 timer
+        # if not keep_ids:
+        #     # Restore column state even if no valid IDs to select
+        #     # Use a small delay to ensure update() has completed
+        #     # Wrap in try/except to handle case where parent element is deleted
+        #     def _safe_restore() -> None:
+        #         try:
+        #             pass
+        #             # self._set_column_state_async(None)
+        #         except RuntimeError as e:
+        #             if "parent slot" in str(e).lower() or "deleted" in str(e).lower():
+        #                 # Parent element was deleted, timer is no longer valid - silently ignore
+        #                 return
+        #             raise
+        #     ui.timer(0.15, _safe_restore, once=True)
+        #     return
+
         if not keep_ids:
-            # Restore column state even if no valid IDs to select
-            # Use a small delay to ensure update() has completed
-            ui.timer(0.15, lambda: self._set_column_state_async(None), once=True)
             return
 
         if self._grid_config.selection_mode == "single":
@@ -335,7 +385,18 @@ class CustomAgGrid_v2:
         
         # Final restore after selection (defensive - set_selected_row_ids already did this)
         # Use a small delay to ensure selection operations have completed
-        ui.timer(0.2, lambda: self._set_column_state_async(None), once=True)
+        # Wrap in try/except to handle case where parent element is deleted
+        # abb 20260203 timer
+        # def _safe_restore() -> None:
+        #     try:
+        #         pass
+        #         # self._set_column_state_async(None)
+        #     except RuntimeError as e:
+        #         if "parent slot" in str(e).lower() or "deleted" in str(e).lower():
+        #             # Parent element was deleted, timer is no longer valid - silently ignore
+        #             return
+        #         raise
+        # ui.timer(0.2, _safe_restore, once=True)
 
     # ------------------------------------------------------------------
     # Programmatic selection
@@ -354,19 +415,30 @@ class CustomAgGrid_v2:
         self._selection_origin = origin
 
         # Save current column state asynchronously before any operations that might reset it
-        self._get_column_state_async()
+        # self._get_column_state_async()
 
         # Clear selection for all modes when row_ids is empty
-        if not row_ids:
-            self._grid.run_grid_method("deselectAll")
-            # Clear internal tracking state
-            self._last_selected_rows = []
-            self._last_selected_row_id = None
-            self._selection_origin = "internal"
-            # Restore column state after deselectAll completes
-            # Use a small delay to ensure deselectAll has completed
-            ui.timer(0.15, lambda: self._set_column_state_async(None), once=True)
-            return
+        # abb 20260203 timer this may be needed to clear
+        # if not row_ids:
+        #     self._grid.run_grid_method("deselectAll")
+        #     # Clear internal tracking state
+        #     self._last_selected_rows = []
+        #     self._last_selected_row_id = None
+        #     self._selection_origin = "internal"
+        #     # Restore column state after deselectAll completes
+        #     # Use a small delay to ensure deselectAll has completed
+        #     # Wrap in try/except to handle case where parent element is deleted
+        #     def _safe_restore() -> None:
+        #         try:
+        #             pass
+        #             # self._set_column_state_async(None)
+        #         except RuntimeError as e:
+        #             if "parent slot" in str(e).lower() or "deleted" in str(e).lower():
+        #                 # Parent element was deleted, timer is no longer valid - silently ignore
+        #                 return
+        #             raise
+        #     ui.timer(0.15, _safe_restore, once=True)
+        #     return
 
         # For single/none mode, clear all first before selecting
         if self._grid_config.selection_mode in {"single", "none"}:
@@ -383,7 +455,19 @@ class CustomAgGrid_v2:
 
         # Restore column state after selection is complete
         # Use a small delay to ensure selection operations have completed
-        ui.timer(0.15, lambda: self._set_column_state_async(None), once=True)
+        # Wrap in try/except to handle case where parent element is deleted
+        # abb 20260203 timer
+        
+        # def _safe_restore() -> None:
+        #     try:
+        #         pass
+        #         # self._set_column_state_async(None)
+        #     except RuntimeError as e:
+        #         if "parent slot" in str(e).lower() or "deleted" in str(e).lower():
+        #             # Parent element was deleted, timer is no longer valid - silently ignore
+        #             return
+        #         raise
+        # ui.timer(0.15, _safe_restore, once=True)
 
     # ------------------------------------------------------------------
     # Internal: conversion
@@ -472,6 +556,9 @@ class CustomAgGrid_v2:
 
                 col_def[":cellEditor"] = "'agSelectCellEditor'"
                 col_def["cellEditorParams"] = {"values": values}
+            elif col.editor == "checkbox" and col.editable:
+                col_def[":cellEditor"] = "'agCheckboxCellEditor'"
+                col_def["cellEditorParams"] = {}
 
             col_def.update(col.extra_grid_options)
             defs.append(col_def)

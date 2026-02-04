@@ -175,7 +175,7 @@ class RoiImageWidget:
         self._last_mouse_x_full: Optional[float] = None
         self._last_mouse_y_full: Optional[float] = None
         
-        # Callback registries (like CustomAgGrid pattern - no psygnal)
+        # Callback registries
         self._roi_created_handlers: List[Callable[[dict], None]] = []
         self._roi_updated_handlers: List[Callable[[dict], None]] = []
         self._roi_deleted_handlers: List[Callable[[str], None]] = []
