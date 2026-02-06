@@ -98,8 +98,8 @@ class GridConfig:
     row_id_field: Optional[str] = None
 
     show_row_index: bool = False
-    row_index_header: str = "#"
-    row_index_width: int = 45  # need 60 to fit index >= 100
+    row_index_header: str = "XXX"
+    row_index_width: int = 50  # need 60 to fit index >= 100
     row_index_resizable: bool = True
 
     extra_grid_options: dict[str, Any] = field(default_factory=dict)

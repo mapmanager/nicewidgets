@@ -67,4 +67,4 @@ def build_ui() -> None:
 
 if __name__ in {"__main__", "__mp_main__"}:
     build_ui()
-    ui.run(native=True, reload=False, window_size=(1000, 520))
+    ui.run(native=True, reload=False, window_size=(2000, 520))

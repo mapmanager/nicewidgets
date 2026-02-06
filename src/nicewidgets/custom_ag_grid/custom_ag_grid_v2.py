@@ -303,8 +303,13 @@ class CustomAgGrid_v2:
         # logger.debug('')
         
         # Save current column state asynchronously before update
-        logger.error('20260203 removed due to timer error')
+        # logger.error('20260203 removed due to timer error')
         # self._get_column_state_async()
+
+        _debug = self._runtimeWidgetName == 'FileTableView'
+        _debug = False
+        if _debug:
+            logger.debug(f'  {self._runtimeWidgetName} data:{len(data)} rows')
 
         previous_selected_ids: list[str] = []
         if self._last_selected_rows:
@@ -319,6 +324,11 @@ class CustomAgGrid_v2:
         # logger.debug(f'  self._rows is:')
         # logger.debug(self._rows)
         self._grid.options["rowData"] = self._rows
+        
+        if _debug:
+            logger.debug(f'  {self._runtimeWidgetName} calling backend self._grid.update() self._rows:{len(self._rows)}')
+        
+        # THIS IS NICEGUI API
         self._grid.update()
 
         # Reset selection tracking (caller can re-select programmatically if desired)
