@@ -71,6 +71,7 @@ examples = ["scipy>=1.11.0"]
 test = [
     "pytest>=7.4",
     "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.23",
 ]
 docs = [
     "mkdocs>=1.5.0",
@@ -105,6 +106,7 @@ examples = ["scipy>=1.11.0"]
 test = [
     "pytest>=7.4",
     "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.23",
 ]
 docs = [
     "mkdocs>=1.5.0",
@@ -140,6 +142,7 @@ addopts = [
 markers = [
     "requires_nicegui: tests that need NiceGUI UI context",
 ]
+asyncio_mode = "auto"
 
 [project.urls]
 Homepage = "https://github.com/mapmanager/nicewidgets"

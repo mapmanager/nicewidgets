@@ -480,6 +480,43 @@ class CustomAgGrid_v2:
         # ui.timer(0.15, _safe_restore, once=True)
 
     # ------------------------------------------------------------------
+    # Row-level updates
+    # ------------------------------------------------------------------
+
+    def update_row(self, row_id: str, new_row: RowDict) -> None:
+        """Update a single row in-place by row id without replacing all data.
+
+        This keeps ``self._rows`` in sync and uses the AG Grid row API to patch
+        the corresponding row node. Unlike :meth:`set_data`, it does *not* call
+        ``self._grid.update()`` or mutate ``grid.options['rowData']``.
+
+        Args:
+            row_id: Value of the configured ``row_id_field`` for the row to update.
+            new_row: Full row dictionary to replace the existing row with.
+        """
+        idx: Optional[int] = None
+        target_id = str(row_id)
+        for i, row in enumerate(self._rows):
+            if str(row.get(self._row_id_field)) == target_id:
+                idx = i
+                break
+
+        if idx is None:
+            return
+
+        # Replace internal row representation
+        self._rows[idx] = dict(new_row)
+
+        try:
+            # Use the AG Grid row node API to set the full row data.
+            # This avoids resetting column state or re-creating all rows.
+            self._grid.run_row_method(target_id, "setData", new_row)
+        except RuntimeError as ex:  # pragma: no cover - defensive guard for deleted grids
+            message = str(ex).lower()
+            if "deleted" not in message and "parent slot" not in message:
+                raise
+
+    # ------------------------------------------------------------------
     # Internal: conversion
     # ------------------------------------------------------------------
 
