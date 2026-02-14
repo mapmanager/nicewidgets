@@ -790,7 +790,7 @@ class PlotPoolController:
         """
         points = (e.args or {}).get("points") or []
         if not points:
-            logger.debug("Plotly click event received but no points found")
+            logger.warning("Plotly click event received but no points found")
             return
 
         p0: dict[str, Any] = points[0]
@@ -806,10 +806,10 @@ class PlotPoolController:
                 row_id = str(custom[0])
 
             if not row_id:
-                logger.debug(f"Could not extract row_id from plotly click: custom={custom}")
+                logger.warning(f"Could not extract row_id from plotly click: custom={custom}")
                 return
 
-            logger.info(f"Plotly click on plot {plot_index + 1}: plot_type={state.plot_type.value}, row_id={row_id}")
+            # logger.info(f"Plotly click on plot {plot_index + 1}: plot_type={state.plot_type.value}, row_id={row_id}")
 
             df_f = self._get_filtered_df(state)
             idx = self._id_to_index_filtered.get(row_id)
@@ -820,6 +820,7 @@ class PlotPoolController:
             row = df_f.iloc[idx]
             if self._clicked_label:
                 self._clicked_label.text = f"Plot {plot_index + 1}: {format_pre_filter_display(state.pre_filter)} \n {self.unique_row_id_col}={row_id} \n (filtered iloc={idx})"
+            
             logger.info(f"Clicked row data: {row.to_dict()}")
             pprint(row.to_dict())
             return
