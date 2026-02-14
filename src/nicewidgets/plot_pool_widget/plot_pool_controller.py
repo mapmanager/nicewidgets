@@ -8,8 +8,7 @@ when expansion is opened). See PlotPoolController class docstring for public API
 
 from __future__ import annotations
 
-from pprint import pprint
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import pandas as pd
 from nicegui import ui
@@ -131,7 +130,9 @@ class PlotPoolController:
         config = PoolPlotConfig.load()
         loaded_plot_states = config.get_plot_states()
         loaded_layout = config.get_layout()
-        
+        self._control_panel_splitter_value: float = config.get_control_panel_splitter_value()
+        self._splitter_save_timer: Optional[Any] = None
+
         if loaded_plot_states:
             logger.info(f"Loaded {len(loaded_plot_states)} plot state(s) and layout '{loaded_layout}' from pool_plot_config.json")
             # Use loaded layout
@@ -375,9 +376,9 @@ class PlotPoolController:
                 # on_change: when user resizes splitter, re-build plot panel so 1x2/2x1 layout is not lost
                 # (NiceGUI/Quasar can re-render the 'after' slot and show only one plot; rebuild restores correct count)
                 self._mainSplitter = ui.splitter(
-                    value=30,  # Increased from 25 to give more horizontal room to toolbar
-                    limits=(15, 50),
-                    on_change=lambda _: self._on_splitter_change(),
+                    value=self._control_panel_splitter_value,
+                    limits=(0, 50),
+                    on_change=lambda e: self._on_splitter_change(e),
                 ).classes("w-full h-full")
             
             # LEFT: Control panel
@@ -544,9 +545,33 @@ class PlotPoolController:
     # Events
     # ----------------------------
 
-    def _on_splitter_change(self) -> None:
-        """Restore plot panel after splitter resize (avoids 1x2/2x1 collapsing to single plot)."""
+    def _on_splitter_change(self, e=None) -> None:
+        """Restore plot panel after splitter resize (avoids 1x2/2x1 collapsing to single plot). Persist splitter value."""
         self._rebuild_plot_panel()
+        # Persist splitter value (throttled)
+        if e is not None and hasattr(e, "value") and e.value is not None:
+            try:
+                self._control_panel_splitter_value = float(e.value)
+                self._debounced_save_splitter()
+            except (TypeError, ValueError):
+                pass
+
+    def _debounced_save_splitter(self) -> None:
+        """Save splitter value to config after a short delay to avoid excessive writes."""
+        if self._splitter_save_timer is not None:
+            self._splitter_save_timer.cancel()
+        self._splitter_save_timer = ui.timer(0.5, self._flush_save_splitter, once=True)
+
+    def _flush_save_splitter(self) -> None:
+        """Actually persist the splitter value to config."""
+        self._splitter_save_timer = None
+        try:
+            from nicewidgets.plot_pool_widget.pool_plot_config import PoolPlotConfig
+            config = PoolPlotConfig.load()
+            config.set_control_panel_splitter_value(self._control_panel_splitter_value)
+            config.save()
+        except Exception as ex:
+            logger.warning(f"Failed to save splitter config: {ex}")
 
     def _get_num_plots_for_layout(self, layout_str: str) -> int:
         """Get number of plots needed for a layout string.
@@ -820,9 +845,9 @@ class PlotPoolController:
             row = df_f.iloc[idx]
             if self._clicked_label:
                 self._clicked_label.text = f"Plot {plot_index + 1}: {format_pre_filter_display(state.pre_filter)} \n {self.unique_row_id_col}={row_id} \n (filtered iloc={idx})"
-            
-            logger.info(f"Clicked row data: {row.to_dict()}")
-            pprint(row.to_dict())
+            row_dict = row.to_dict()
+            if self._on_table_row_selected:
+                self._on_table_row_selected(row_id, row_dict)
             return
 
         # grouped aggregation plot: click -> group summary

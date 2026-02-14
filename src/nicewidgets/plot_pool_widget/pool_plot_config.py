@@ -57,6 +57,7 @@ class PoolPlotConfigData:
     schema_version: int = SCHEMA_VERSION
     layout: str = "1x1"
     plot_states: list[Dict[str, Any]] = field(default_factory=list)
+    control_panel_splitter_value: float = 30
 
     def to_json_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dict."""
@@ -64,6 +65,7 @@ class PoolPlotConfigData:
             "schema_version": self.schema_version,
             "layout": self.layout,
             "plot_states": self.plot_states,
+            "control_panel_splitter_value": self.control_panel_splitter_value,
         }
 
     @classmethod
@@ -99,16 +101,27 @@ class PoolPlotConfigData:
             else:
                 logger.warning(f"plot_state is not a dict or is empty, using empty list")
         
+        # control_panel_splitter_value - percentage for left panel (default 30)
+        control_panel_splitter_value = 30.0
+        if "control_panel_splitter_value" in d:
+            try:
+                v = d["control_panel_splitter_value"]
+                control_panel_splitter_value = float(v)
+                control_panel_splitter_value = max(0.0, min(50.0, control_panel_splitter_value))
+            except (TypeError, ValueError):
+                pass
+
         # Warn about unknown keys in the root level
-        known_keys = {"schema_version", "layout", "plot_state", "plot_states"}
+        known_keys = {"schema_version", "layout", "plot_state", "plot_states", "control_panel_splitter_value"}
         for key in d.keys():
             if key not in known_keys:
                 logger.warning(f"Unknown key '{key}' in pool plot config, ignoring")
-        
+
         return cls(
             schema_version=schema_version,
             layout=layout,
             plot_states=plot_states_list,
+            control_panel_splitter_value=control_panel_splitter_value,
         )
 
 
@@ -233,6 +246,14 @@ class PoolPlotConfig:
     def set_plot_states(self, plot_states: list[PlotState]) -> None:
         """Set list of PlotState objects in config."""
         self.data.plot_states = [ps.to_dict() for ps in plot_states]
+
+    def get_control_panel_splitter_value(self) -> float:
+        """Get control panel splitter value (percentage for left panel, 0-50)."""
+        return self.data.control_panel_splitter_value
+
+    def set_control_panel_splitter_value(self, value: float) -> None:
+        """Set control panel splitter value (percentage for left panel, 0-50)."""
+        self.data.control_panel_splitter_value = max(0.0, min(50.0, value))
     
     # Backward compatibility methods (deprecated, use get_plot_states/set_plot_states)
     def get_plot_state(self) -> Optional[PlotState]:
