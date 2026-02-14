@@ -50,7 +50,7 @@ class FigureGenerator:
     def __init__(
         self,
         data_processor: DataFrameProcessor,
-        row_id_col: str = "path",
+        unique_row_id_col: str = "path",
     ) -> None:
         """Initialize FigureGenerator with data processor and row ID column.
         
@@ -59,7 +59,7 @@ class FigureGenerator:
             row_id_col: Column name containing unique row identifiers.
         """
         self.data_processor = data_processor
-        self.row_id_col = row_id_col
+        self.unique_row_id_col = unique_row_id_col
 
     def make_figure(
         self,
@@ -359,7 +359,7 @@ class FigureGenerator:
             df_f, state.ycol, state.use_absolute_value,
             state.use_remove_values, state.remove_values_threshold
         )
-        row_ids = df_f[self.row_id_col].astype(str)
+        row_ids = df_f[self.unique_row_id_col].astype(str)
 
         selectedpoints = None
         selected = None
@@ -426,7 +426,7 @@ class FigureGenerator:
             df_f, state.ycol, state.use_absolute_value,
             state.use_remove_values, state.remove_values_threshold
         )
-        row_ids = df_f[self.row_id_col].astype(str)
+        row_ids = df_f[self.unique_row_id_col].astype(str)
 
         # Prepare color grouping (from group_col)
         color_values = df_f[state.group_col].astype(str) if state.group_col in df_f.columns else None
@@ -649,7 +649,7 @@ class FigureGenerator:
             df_f, state.ycol, state.use_absolute_value,
             state.use_remove_values, state.remove_values_threshold
         )
-        row_ids = df_f[self.row_id_col].astype(str)
+        row_ids = df_f[self.unique_row_id_col].astype(str)
 
         # Get unique categorical values and create mapping to numeric positions
         unique_cats = sorted(x_cat.unique())

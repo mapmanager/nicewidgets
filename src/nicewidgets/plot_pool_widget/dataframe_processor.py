@@ -31,7 +31,7 @@ class DataFrameProcessor:
         df: pd.DataFrame,
         *,
         roi_id_col: str = "roi_id",
-        row_id_col: str = "path",
+        unique_row_id_col: str = "path",
     ) -> None:
         """Initialize DataFrameProcessor with dataframe and column configuration.
         
@@ -45,12 +45,12 @@ class DataFrameProcessor:
         """
         self.df = df
         self.roi_id_col = roi_id_col
-        self.row_id_col = row_id_col
+        self.unique_row_id_col = unique_row_id_col
 
         if self.roi_id_col not in df.columns:
             raise ValueError(f"df must contain required column {roi_id_col!r}")
-        if self.row_id_col not in df.columns:
-            raise ValueError(f"df must contain required unique id column {row_id_col!r}")
+        if self.unique_row_id_col not in df.columns:
+            raise ValueError(f"df must contain required unique id column {unique_row_id_col!r}")
 
         roi_values = self.get_roi_values()
         if not roi_values:
@@ -74,23 +74,23 @@ class DataFrameProcessor:
             
         Returns:
             Filtered dataframe containing only rows with matching ROI ID,
-            with rows missing row_id_col removed.
+            with rows missing unique_row_id_col removed.
         """
         df_f = self.df[self.df[self.roi_id_col].astype(int) == int(roi_id)]
-        df_f = df_f.dropna(subset=[self.row_id_col])
+        df_f = df_f.dropna(subset=[self.unique_row_id_col])
         return df_f
 
     def build_row_id_index(self, df_f: pd.DataFrame) -> dict[str, int]:
-        """Build mapping from row_id to iloc index in filtered dataframe.
+        """Build mapping from unique_row_id to iloc index in filtered dataframe.
         
         Args:
             df_f: Filtered dataframe to build index for.
             
         Returns:
-            Dictionary mapping row_id (as string) to iloc index (0-based).
+            Dictionary mapping unique_row_id (as string) to iloc index (0-based).
         """
-        row_ids = df_f[self.row_id_col].astype(str).tolist()
-        # map row_id -> iloc within df_f
+        row_ids = df_f[self.unique_row_id_col].astype(str).tolist()
+        # map unique_row_id -> iloc within df_f
         return {rid: i for i, rid in enumerate(row_ids)}
 
     def get_y_values(

@@ -7,7 +7,7 @@ Supports lazy rendering via LazySection integration.
 from __future__ import annotations
 
 from pprint import pprint
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import pandas as pd
 from nicegui import ui
@@ -21,6 +21,7 @@ from nicewidgets.plot_pool_widget.figure_generator import FigureGenerator
 from nicewidgets.plot_pool_widget.pool_control_panel import PoolControlPanel
 from nicewidgets.plot_pool_widget.selection_handler import PlotSelectionHandler, is_selection_compatible
 from nicewidgets.plot_pool_widget.lazy_section import LazySection, LazySectionConfig
+from nicewidgets.plot_pool_widget.dataframe_table_view import DataFrameTableView
 
 logger = get_logger(__name__)
 
@@ -37,8 +38,9 @@ class PlotPoolController:
         df: pd.DataFrame,
         *,
         roi_id_col: str = "roi_id",
-        row_id_col: str = "path",
+        unique_row_id_col: str = "path",
         plot_state: Optional[PlotState] = None,
+        on_table_row_selected: Optional[Callable[[str, dict[str, Any]], None]] = None,
     ) -> None:
         """Initialize plot controller with dataframe and column configuration.
         
@@ -47,22 +49,25 @@ class PlotPoolController:
             roi_id_col: Column name containing ROI identifiers.
             row_id_col: Column name containing unique row identifiers.
             plot_state: Optional initial plot state. If None, uses defaults.
+            on_table_row_selected: Optional callback called when a row is selected
+                in the DataFrameTableView. Receives (row_id: str, row_dict: dict).
         """
         self.df = df
         self.roi_id_col = roi_id_col
-        self.row_id_col = row_id_col
+        self.unique_row_id_col = unique_row_id_col
+        self._on_table_row_selected = on_table_row_selected
 
         # Initialize DataFrameProcessor for data operations
         self.data_processor = DataFrameProcessor(
             df,
             roi_id_col=roi_id_col,
-            row_id_col=row_id_col,
+            unique_row_id_col=unique_row_id_col,
         )
 
         # Initialize FigureGenerator for plot generation
         self.figure_generator = FigureGenerator(
             self.data_processor,
-            row_id_col=row_id_col,
+            unique_row_id_col=unique_row_id_col,
         )
 
         # reasonable defaults
@@ -124,10 +129,12 @@ class PlotPoolController:
         self._plots: list[ui.plotly] = []
         self._clicked_label: Optional[ui.label] = None
         self._mainSplitter: Optional[ui.splitter] = None
+        self._verticalSplitter: Optional[ui.splitter] = None
         self._last_plot_type: Optional[PlotType] = None
         self._plot_container: Optional[ui.column] = None
         self._selection_label: Optional[ui.label] = None
         self._control_panel: Optional[PoolControlPanel] = None
+        self._table_view: Optional[DataFrameTableView] = None
 
         # row_id -> iloc index within CURRENT filtered df (rebuilt each replot)
         self._id_to_index_filtered: dict[str, int] = {}
@@ -136,7 +143,7 @@ class PlotPoolController:
         self._selection_handler = PlotSelectionHandler(
             data_processor=self.data_processor,
             figure_generator=self.figure_generator,
-            row_id_col=self.row_id_col,
+            unique_row_id_col=self.unique_row_id_col,
             get_filtered_df=self._get_filtered_df,
             on_apply_selection=self._apply_selection_to_all_plots,
             on_update_label=self._set_selection_label_count,
@@ -145,13 +152,32 @@ class PlotPoolController:
     def select_points_by_row_id(self, row_id: str) -> None:
         """Programmatically select points by row_id (delegates to selection handler)."""
         self._selection_handler.select_by_row_id(row_id, self.plot_states)
+    
+    def _handle_table_row_selected(self, selected_row_id:str, row_dict:dict) -> None:
+        """Handle row selection from DataFrameTableView.
+        
+        Args:
+            row_id: The unique row identifier from unique_row_id_col.
+            row_dict: Dictionary containing all column values for the selected row.
+        """
+        # Call user-provided callback if set
+        if self._on_table_row_selected:
+            self._on_table_row_selected(selected_row_id, row_dict)
+        
+        # Clear existing plot selections and select the new point
+        # This clears plot selections as requested
+        self._selection_handler.handle_clear()
+        
+        # Select points in plots using the row_id
+        
+        self.select_points_by_row_id(selected_row_id)
 
 
     def _get_filtered_df(self, state: PlotState) -> pd.DataFrame:
         """Return dataframe filtered by state.roi_id for selection/plot use."""
         if state.roi_id and state.roi_id != 0:
             return self.data_processor.filter_by_roi(state.roi_id)
-        return self.data_processor.df.dropna(subset=[self.data_processor.row_id_col])
+        return self.data_processor.df.dropna(subset=[self.data_processor.unique_row_id_col])
 
     def _set_selection_label_count(self, count: int) -> None:
         """Update selection label text (callback from selection handler)."""
@@ -189,23 +215,50 @@ class PlotPoolController:
             # Header area at the top
             with ui.column().classes("w-full"):
                 with ui.row().classes("w-full items-center gap-3 flex-wrap"):
-                    ui.label("Radon Analysis Pool Plot").classes("text-2xl font-bold mb-2")
+                    ui.label("Pool Plot").classes("text-2xl font-bold mb-2")
                     ui.button("Open CSV", on_click=self._on_open_csv).classes("text-sm")
+            
+            # Vertical splitter: table view on top, plots/controls below
+            self._verticalSplitter = ui.splitter(
+                value=30,  # 30% for table, 70% for plots
+                limits=(0, 100),  # Table can be 20-60% of height
+                horizontal=True,  # Vertical split (horizontal=True means horizontal divider)
+            ).classes("w-full h-screen")
+            
+            # TOP: Table view in LazySection
+            with self._verticalSplitter.before:
+                with ui.column().classes("w-full h-full min-h-0"):
+                    self._table_view = DataFrameTableView(
+                        self.df,
+                        unique_row_id_col=self.unique_row_id_col,
+                        on_row_selected=self._handle_table_row_selected,
+                    )
+
+                    # self._table_view.build_lazy(
+                    #     "Data Table",
+                    #     subtitle="Select a row to highlight corresponding points in plots",
+                    #     config=LazySectionConfig(render_once=True, clear_on_close=False, show_spinner=True),
+                    # )
+
+                    # self._table_view.build(container=self._verticalSplitter.before)
+                    self._table_view.build()
+
+            # BOTTOM: Existing horizontal splitter with controls and plots
+            with self._verticalSplitter.after:
                 with ui.row().classes("w-full items-center gap-3 flex-wrap"):
                     self._clicked_label = ui.label("Click a point to show the filtered df row...").classes("text-sm text-gray-600")
                     self._selection_label = ui.label("No selection").classes("text-sm font-medium")
                     ui.button("Clear selection", on_click=self._clear_selection).classes("text-sm")
                 # Global Esc to clear selection (NiceGUI keyboard element)
                 ui.keyboard(on_key=self._on_keyboard_key)
-            
-            # Main splitter: horizontal layout with controls on left, plot on right
-            # on_change: when user resizes splitter, re-build plot panel so 1x2/2x1 layout is not lost
-            # (NiceGUI/Quasar can re-render the 'after' slot and show only one plot; rebuild restores correct count)
-            self._mainSplitter = ui.splitter(
-                value=30,  # Increased from 25 to give more horizontal room to toolbar
-                limits=(15, 50),
-                on_change=lambda _: self._on_splitter_change(),
-            ).classes("w-full h-screen")
+                # Main splitter: horizontal layout with controls on left, plot on right
+                # on_change: when user resizes splitter, re-build plot panel so 1x2/2x1 layout is not lost
+                # (NiceGUI/Quasar can re-render the 'after' slot and show only one plot; rebuild restores correct count)
+                self._mainSplitter = ui.splitter(
+                    value=30,  # Increased from 25 to give more horizontal room to toolbar
+                    limits=(15, 50),
+                    on_change=lambda _: self._on_splitter_change(),
+                ).classes("w-full h-full")
             
             # LEFT: Control panel
             roi_options = ["(none)"] + [str(r) for r in self.data_processor.get_roi_values()]
@@ -626,7 +679,7 @@ class PlotPoolController:
             if state.roi_id and state.roi_id != 0:
                 df_f = self.data_processor.filter_by_roi(state.roi_id)
             else:
-                df_f = self.data_processor.df.dropna(subset=[self.data_processor.row_id_col])
+                df_f = self.data_processor.df.dropna(subset=[self.data_processor.unique_row_id_col])
             idx = self._id_to_index_filtered.get(row_id)
             if idx is None:
                 logger.warning(f"Row ID {row_id} not found in filtered index")
@@ -634,7 +687,7 @@ class PlotPoolController:
 
             row = df_f.iloc[idx]
             if self._clicked_label:
-                self._clicked_label.text = f"Plot {plot_index + 1}: ROI={state.roi_id} \n {self.row_id_col}={row_id} \n (filtered iloc={idx})"
+                self._clicked_label.text = f"Plot {plot_index + 1}: ROI={state.roi_id} \n {self.unique_row_id_col}={row_id} \n (filtered iloc={idx})"
             logger.info(f"Clicked row data: {row.to_dict()}")
             pprint(row.to_dict())
             return
@@ -732,7 +785,7 @@ class PlotPoolController:
         if state.roi_id and state.roi_id != 0:
             df_f = self.data_processor.filter_by_roi(state.roi_id)
         else:
-            df_f = self.data_processor.df.dropna(subset=[self.data_processor.row_id_col])
+            df_f = self.data_processor.df.dropna(subset=[self.data_processor.unique_row_id_col])
         self._id_to_index_filtered = self.data_processor.build_row_id_index(df_f)
         
         logger.debug(f"Making figure: plot_type={state.plot_type.value}, filtered_rows={len(df_f)}")

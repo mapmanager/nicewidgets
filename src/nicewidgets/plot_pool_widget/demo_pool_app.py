@@ -36,7 +36,7 @@ def main() -> None:
 
     df = pd.read_csv(path)
     if "row_id" not in df.columns and "path" in df.columns and "roi_id" in df.columns:
-        df["row_id"] = df["path"].astype(str) + "|" + df["roi_id"].astype(str)
+        df["unique_row_id"] = df["path"].astype(str) + "|" + df["roi_id"].astype(str)
 
     setUpGuiDefaults()
     
@@ -59,9 +59,9 @@ def main() -> None:
         # ui.label("Example 2: Lazy Usage (renders only when expansion is opened)").classes("text-lg font-semibold mt-4")
         # ui.label("The plot controller below uses build_lazy() - it only renders when you open the expansion.").classes("text-sm text-gray-600")
         
-        ctrl_lazy = PlotPoolController(df, roi_id_col="roi_id", row_id_col="row_id", plot_state=None)
+        ctrl_lazy = PlotPoolController(df, roi_id_col="roi_id", unique_row_id_col="unique_row_id", plot_state=None)
         ctrl_lazy.build_lazy(
-            "Radon Analysis Pool Plot (Lazy)",
+            "Pool Plot (Lazy)",
             # subtitle="Click to load plot controls and visualization",
             config=LazySectionConfig(render_once=True, clear_on_close=False, show_spinner=True),
         )
@@ -72,12 +72,12 @@ def main() -> None:
         # ctrl_direct.select_points_by_row_id(_select_path)
         # ctrl_lazy.select_points_by_row_id(_select_path)
 
-    native_bool = False
+    native_bool = True
     reload_bool = True
     if native_bool:
         ui.run(reload=reload_bool,
             native=True,
-            window_size=(1400, 800)
+            window_size=(1000, 800)
             )
     else:
         ui.run(reload=reload_bool,

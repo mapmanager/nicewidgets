@@ -74,14 +74,14 @@ class PlotSelectionHandler:
         self,
         data_processor: DataFrameProcessor,
         figure_generator: FigureGenerator,
-        row_id_col: str,
+        unique_row_id_col: str,
         get_filtered_df: Callable[[PlotState], pd.DataFrame],
         on_apply_selection: Callable[[], None],
         on_update_label: Callable[[int], None],
     ) -> None:
         self._data_processor = data_processor
         self._figure_generator = figure_generator
-        self._row_id_col = row_id_col
+        self._unique_row_id_col = unique_row_id_col
         self._get_filtered_df = get_filtered_df
         self._on_apply_selection = on_apply_selection
         self._on_update_label = on_update_label
@@ -123,7 +123,7 @@ class PlotSelectionHandler:
                 selected_row_ids = _compute_selected_points_from_range(
                     self._data_processor,
                     self._figure_generator,
-                    self._row_id_col,
+                    self._unique_row_id_col,
                     df_f,
                     plot_state,
                     x_range=x_range,
@@ -147,7 +147,7 @@ class PlotSelectionHandler:
                             selected_row_ids = _compute_selected_points_from_range(
                                 self._data_processor,
                                 self._figure_generator,
-                                self._row_id_col,
+                                self._unique_row_id_col,
                                 df_f,
                                 plot_state,
                                 x_range=x_range,
@@ -163,7 +163,7 @@ class PlotSelectionHandler:
                         selected_row_ids = _compute_selected_points_from_lasso(
                             self._data_processor,
                             self._figure_generator,
-                            self._row_id_col,
+                            self._unique_row_id_col,
                             df_f,
                             plot_state,
                             lasso_x=lasso_x,
@@ -225,11 +225,24 @@ class PlotSelectionHandler:
             return
         state = plot_states[scatter_index]
         df_f = self._get_filtered_df(state)
-        matching = df_f[df_f[self._row_id_col] == row_id]
+
+        # logger.error(f'ppp SEARCHING FOR row_id:')
+        # print(f'  {row_id}')
+        # logger.error(f'in _unique_row_id_col is:{self._unique_row_id_col}')
+
+        # for v in df_f[self._unique_row_id_col].head().tolist():
+        #     print(v)
+
+        matching = df_f[df_f[self._unique_row_id_col] == row_id]
+        
         if len(matching) == 0:
-            logger.warning("Row ID %s not found in filtered dataframe", row_id)
+            # logger.warning(f"Row ID '{row_id}' {type(row_id)} not found in filtered dataframe")
+            # logger.warning(f'self._unique_row_id_col is:"{self._unique_row_id_col}"')
+            # print(df_f[self._unique_row_id_col].head())
+
             return
-        ids = set(matching[self._row_id_col].astype(str).unique())
+
+        ids = set(matching[self._unique_row_id_col].astype(str).unique())
         self._selected_row_ids = ids
         self._on_apply_selection()
         self._on_update_label(len(self._selected_row_ids))
