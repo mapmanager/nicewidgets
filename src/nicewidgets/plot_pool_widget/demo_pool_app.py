@@ -34,9 +34,14 @@ def main() -> None:
 
     path = '/Users/cudmore/Dropbox/data/declan/2026/compare-condiitons/v2-analysis/radon_report.csv'
 
-    df = pd.read_csv(path)
-    if "row_id" not in df.columns and "path" in df.columns and "roi_id" in df.columns:
-        df["unique_row_id"] = df["path"].astype(str) + "|" + df["roi_id"].astype(str)
+    def load_csv_and_build_df() -> pd.DataFrame:
+        """Load the CSV and return a DataFrame with unique_row_id. Used by Refresh button."""
+        df_new = pd.read_csv(path)
+        if "row_id" not in df_new.columns and "path" in df_new.columns and "roi_id" in df_new.columns:
+            df_new["unique_row_id"] = df_new["path"].astype(str) + "|" + df_new["roi_id"].astype(str)
+        return df_new
+
+    df = load_csv_and_build_df()
 
     setUpGuiDefaults()
     
@@ -44,22 +49,13 @@ def main() -> None:
     
     with ui.column().classes("w-full gap-4 p-4"):
 
-        # ui.label("PlotPoolController Usage Examples").classes("text-2xl font-bold")
-        
-        # # Example 1: Direct usage (renders immediately)
-        # ui.label("Example 1: Direct Usage (renders immediately)").classes("text-lg font-semibold mt-4")
-        # ui.label("The plot controller below renders immediately when the page loads.").classes("text-sm text-gray-600")
-        
-        # ctrl_direct = PlotPoolController(df, roi_id_col="roi_id", row_id_col="row_id", plot_state=None)
-        # ctrl_direct.build()  # Renders immediately
-        
-        # ui.separator()
-        
-        # Example 2: Lazy usage (renders only when expansion is opened)
-        # ui.label("Example 2: Lazy Usage (renders only when expansion is opened)").classes("text-lg font-semibold mt-4")
-        # ui.label("The plot controller below uses build_lazy() - it only renders when you open the expansion.").classes("text-sm text-gray-600")
-        
-        ctrl_lazy = PlotPoolController(df, pre_filter_columns=["roi_id"], unique_row_id_col="unique_row_id", plot_state=None)
+        ctrl_lazy = PlotPoolController(
+            df,
+            pre_filter_columns=["roi_id"],
+            unique_row_id_col="unique_row_id",
+            plot_state=None,
+            on_refresh_requested=load_csv_and_build_df,
+        )
         ctrl_lazy.build_lazy(
             "Pool Plot (Lazy)",
             # subtitle="Click to load plot controls and visualization",

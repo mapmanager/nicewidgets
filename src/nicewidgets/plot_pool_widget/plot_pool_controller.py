@@ -9,7 +9,7 @@ when expansion is opened). See PlotPoolController class docstring for public API
 from __future__ import annotations
 
 from pprint import pprint
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 import pandas as pd
 from nicegui import ui
@@ -56,6 +56,7 @@ class PlotPoolController:
         unique_row_id_col: str = "path",
         plot_state: Optional[PlotState] = None,
         on_table_row_selected: Optional[Callable[[str, dict[str, Any]], None]] = None,
+        on_refresh_requested: Optional[Callable[[], pd.DataFrame]] = None,
     ) -> None:
         """Initialize plot controller with dataframe and column configuration.
 
@@ -73,11 +74,16 @@ class PlotPoolController:
                 - row_id: The value in the selected row for unique_row_id_col (as string).
                 - row_dict: The full row as a dict (column name -> value).
                 The controller also clears plot selection and highlights the corresponding point(s) in the plots.
+            on_refresh_requested: Optional callback invoked when the user clicks the Refresh button.
+                Signature: () -> pd.DataFrame. Should load fresh data and return a DataFrame with
+                unique_row_id_col, pre_filter_columns, and numeric columns. If set, a Refresh button
+                is shown in the header; on click, the callback is called and update_df() is invoked.
         """
         self.df = df
         self.pre_filter_columns = pre_filter_columns if pre_filter_columns is not None else ["roi_id"]
         self.unique_row_id_col = unique_row_id_col
         self._on_table_row_selected = on_table_row_selected
+        self._on_refresh_requested = on_refresh_requested
 
         # Initialize DataFrameProcessor for data operations
         self.data_processor = DataFrameProcessor(
@@ -188,7 +194,88 @@ class PlotPoolController:
             row_id: Value from unique_row_id_col that identifies the row (e.g. path or id as string).
         """
         self._selection_handler.select_by_row_id(row_id, self.plot_states)
-    
+
+    def update_df(self, new_df: pd.DataFrame) -> None:
+        """Replace the dataframe and refresh table, plots, and controls.
+
+        Call this when the underlying data has changed. Rebuilds the table,
+        control panel, and plots with the new data. No-op if the controller
+        has not been built yet (e.g., LazySection closed).
+
+        Args:
+            new_df: New DataFrame. Must have unique_row_id_col, pre_filter_columns,
+                and at least one numeric column for y.
+        """
+        if self._verticalSplitter is None or self._table_container is None or self._control_panel_container is None:
+            return
+        if self.unique_row_id_col not in new_df.columns:
+            raise ValueError(f"new_df must have column {self.unique_row_id_col!r}")
+        for col in self.pre_filter_columns:
+            if col not in new_df.columns:
+                raise ValueError(f"new_df must have column {col!r}")
+        num_cols = numeric_columns(new_df)
+        if not num_cols:
+            raise ValueError("new_df must have at least one numeric column")
+
+        self.df = new_df
+        self.data_processor = DataFrameProcessor(
+            new_df,
+            pre_filter_columns=self.pre_filter_columns,
+            unique_row_id_col=self.unique_row_id_col,
+        )
+        self.figure_generator = FigureGenerator(
+            self.data_processor,
+            unique_row_id_col=self.unique_row_id_col,
+        )
+        self._selection_handler = PlotSelectionHandler(
+            data_processor=self.data_processor,
+            figure_generator=self.figure_generator,
+            unique_row_id_col=self.unique_row_id_col,
+            get_filtered_df=self._get_filtered_df,
+            on_apply_selection=self._apply_selection_to_all_plots,
+            on_update_label=self._set_selection_label_count,
+        )
+
+        self._table_container.clear()
+        self._table_view = DataFrameTableView(
+            new_df,
+            unique_row_id_col=self.unique_row_id_col,
+            on_row_selected=self._handle_table_row_selected,
+        )
+        with self._table_container:
+            self._table_view.build()
+
+        pre_filter_options = {
+            col: [PRE_FILTER_NONE] + [str(v) for v in self.data_processor.get_pre_filter_values(col)]
+            for col in self.pre_filter_columns
+        }
+        self._control_panel_container.clear()
+        self._control_panel = PoolControlPanel(
+            new_df,
+            layout=self.layout,
+            current_plot_index=self.current_plot_index,
+            initial_state=self.plot_states[self.current_plot_index],
+            on_any_change=self._on_any_change,
+            on_layout_change=self._on_layout_change,
+            on_save_config=self._save_config,
+            on_plot_radio_change=self._on_plot_radio_change,
+            on_apply_current_to_others=self._apply_current_to_others,
+            on_replot_current=self._replot_current,
+            on_reset_to_default=self._reset_to_default,
+            on_x_column_selected=self._on_x_column_selected,
+            on_y_column_selected=self._on_y_column_selected,
+        )
+        with self._control_panel_container:
+            self._control_panel.build(pre_filter_options=pre_filter_options)
+
+        self._rebuild_plot_panel()
+        self._control_panel.sync_controls(
+            self.plot_states[self.current_plot_index].plot_type,
+            self.plot_states[self.current_plot_index].show_std_sem,
+        )
+        self._state_to_widgets(self.plot_states[self.current_plot_index])
+        self._set_selection_label_count(len(self._selection_handler.get_selected_row_ids()))
+
     def _handle_table_row_selected(self, selected_row_id: str, row_dict: dict) -> None:
         """Handle row selection from DataFrameTableView.
 
@@ -250,34 +337,30 @@ class PlotPoolController:
         # Helper to conditionally use container context or top-level
         def _build_content():
             # Header area at the top
-            with ui.column().classes("w-full"):
-                with ui.row().classes("w-full items-center gap-3 flex-wrap"):
-                    ui.label("Pool Plot").classes("text-2xl font-bold mb-2")
-                    ui.button("Open CSV", on_click=self._on_open_csv).classes("text-sm")
-            
+            # with ui.column().classes("w-full"):
+            #     with ui.row().classes("w-full items-center gap-3 flex-wrap"):
+            #         ui.label("Pool Plot").classes("text-2xl font-bold mb-2")
+            #         ui.button("Open CSV", on_click=self._on_open_csv).classes("text-sm")
+            #         if self._on_refresh_requested is not None:
+            #             ui.button("Refresh", on_click=self._on_refresh_click).classes("text-sm")
+
             # Vertical splitter: table view on top, plots/controls below
+            # value=0 minimizes table (maximizes plots) on initial render
             self._verticalSplitter = ui.splitter(
-                value=30,  # 30% for table, 70% for plots
-                limits=(0, 100),  # Table can be 20-60% of height
+                value=0,  # 0% for table (minimized), 100% for plots
+                limits=(0, 100),  # Table can be 0-100% when user drags
                 horizontal=True,  # Vertical split (horizontal=True means horizontal divider)
             ).classes("w-full h-screen")
             
-            # TOP: Table view in LazySection
+            # TOP: Table view
             with self._verticalSplitter.before:
-                with ui.column().classes("w-full h-full min-h-0"):
+                self._table_container = ui.column().classes("w-full h-full min-h-0")
+                with self._table_container:
                     self._table_view = DataFrameTableView(
                         self.df,
                         unique_row_id_col=self.unique_row_id_col,
                         on_row_selected=self._handle_table_row_selected,
                     )
-
-                    # self._table_view.build_lazy(
-                    #     "Data Table",
-                    #     subtitle="Select a row to highlight corresponding points in plots",
-                    #     config=LazySectionConfig(render_once=True, clear_on_close=False, show_spinner=True),
-                    # )
-
-                    # self._table_view.build(container=self._verticalSplitter.before)
                     self._table_view.build()
 
             # BOTTOM: Existing horizontal splitter with controls and plots
@@ -302,23 +385,25 @@ class PlotPoolController:
                 col: [PRE_FILTER_NONE] + [str(v) for v in self.data_processor.get_pre_filter_values(col)]
                 for col in self.pre_filter_columns
             }
-            self._control_panel = PoolControlPanel(
-                self.df,
-                layout=self.layout,
-                current_plot_index=self.current_plot_index,
-                initial_state=self.plot_states[self.current_plot_index],
-                on_any_change=self._on_any_change,
-                on_layout_change=self._on_layout_change,
-                on_save_config=self._save_config,
-                on_plot_radio_change=self._on_plot_radio_change,
-                on_apply_current_to_others=self._apply_current_to_others,
-                on_replot_current=self._replot_current,
-                on_reset_to_default=self._reset_to_default,
-                on_x_column_selected=self._on_x_column_selected,
-                on_y_column_selected=self._on_y_column_selected,
-            )
             with self._mainSplitter.before:
-                self._control_panel.build(pre_filter_options=pre_filter_options)
+                self._control_panel_container = ui.column().classes("w-full")
+                with self._control_panel_container:
+                    self._control_panel = PoolControlPanel(
+                        self.df,
+                        layout=self.layout,
+                        current_plot_index=self.current_plot_index,
+                        initial_state=self.plot_states[self.current_plot_index],
+                        on_any_change=self._on_any_change,
+                        on_layout_change=self._on_layout_change,
+                        on_save_config=self._save_config,
+                        on_plot_radio_change=self._on_plot_radio_change,
+                        on_apply_current_to_others=self._apply_current_to_others,
+                        on_replot_current=self._replot_current,
+                        on_reset_to_default=self._reset_to_default,
+                        on_x_column_selected=self._on_x_column_selected,
+                        on_y_column_selected=self._on_y_column_selected,
+                    )
+                    self._control_panel.build(pre_filter_options=pre_filter_options)
 
             # RIGHT: Plot panel
             with self._mainSplitter.after:
@@ -655,6 +740,18 @@ class PlotPoolController:
         """Open a CSV file via native dialog. Replace with pywebview callback when available."""
         # Dummy for now: wire pywebview native file-open callback here
         ui.notify("Open CSV: connect pywebview file dialog callback here", type="info")
+
+    def _on_refresh_click(self) -> None:
+        """Handle Refresh button click: call on_refresh_requested callback and update the pool."""
+        if self._on_refresh_requested is None:
+            return
+        try:
+            new_df = self._on_refresh_requested()
+            self.update_df(new_df)
+            ui.notify("Data refreshed", type="positive")
+        except Exception as e:
+            logger.exception("Refresh failed")
+            ui.notify(f"Refresh failed: {e}", type="negative")
 
     def _on_keyboard_key(self, e) -> None:
         key_name = getattr(getattr(e, "key", None), "name", None) if e else None
