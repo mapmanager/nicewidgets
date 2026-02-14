@@ -1,7 +1,9 @@
 """Plot controller for pool plotting application.
 
-Provides PlotPoolController class for creating interactive plot UIs with NiceGUI.
-Supports lazy rendering via LazySection integration.
+Provides PlotPoolController, the main entry point for building interactive pool
+plot UIs with NiceGUI: data table, pre-filter dropdowns, controls, and Plotly
+plots with linked selection. Supports build() (immediate) and build_lazy() (render
+when expansion is opened). See PlotPoolController class docstring for public API.
 """
 
 from __future__ import annotations
@@ -22,6 +24,11 @@ from nicewidgets.plot_pool_widget.pool_control_panel import PoolControlPanel
 from nicewidgets.plot_pool_widget.selection_handler import PlotSelectionHandler, is_selection_compatible
 from nicewidgets.plot_pool_widget.lazy_section import LazySection, LazySectionConfig
 from nicewidgets.plot_pool_widget.dataframe_table_view import DataFrameTableView
+from nicewidgets.plot_pool_widget.pre_filter_conventions import (
+    PRE_FILTER_NONE,
+    default_pre_filter,
+    format_pre_filter_display,
+)
 
 logger = get_logger(__name__)
 
@@ -31,36 +38,51 @@ class PlotPoolController:
 
     Manages plot state, UI widgets, and user interactions for creating
     interactive Plotly visualizations with linked selection across multiple plots.
+    Loads/saves layout and plot state via PoolPlotConfig (schema v3).
+
+    **Public API (entry point for external users):**
+
+    - **__init__(df, ...)** — Configure with dataframe, pre-filter columns, row-id column, and optional callbacks.
+    - **build(container=None)** — Build the full UI (header, table, controls, plots). Call once to render.
+    - **build_lazy(title, ...)** — Build the same UI inside a LazySection (renders when expansion is opened).
+    - **select_points_by_row_id(row_id)** — Programmatically select points in the plots that match the given row_id.
     """
 
     def __init__(
         self,
         df: pd.DataFrame,
         *,
-        roi_id_col: str = "roi_id",
+        pre_filter_columns: Optional[list[str]] = None,
         unique_row_id_col: str = "path",
         plot_state: Optional[PlotState] = None,
         on_table_row_selected: Optional[Callable[[str, dict[str, Any]], None]] = None,
     ) -> None:
         """Initialize plot controller with dataframe and column configuration.
-        
+
         Args:
-            df: DataFrame containing plot data with required columns.
-            roi_id_col: Column name containing ROI identifiers.
-            row_id_col: Column name containing unique row identifiers.
-            plot_state: Optional initial plot state. If None, uses defaults.
-            on_table_row_selected: Optional callback called when a row is selected
-                in the DataFrameTableView. Receives (row_id: str, row_dict: dict).
+            df: DataFrame containing plot data. Must have numeric columns for x/y,
+                and columns for pre_filter_columns and unique_row_id_col.
+            pre_filter_columns: Column names used for pre-filter dropdowns (one dropdown per column).
+                Each column's unique values are shown as options; selection filters the data before plotting.
+                Default is ["roi_id"]. Pass a list of categorical column names, e.g. ["roi_id"] or ["condition", "batch"].
+            unique_row_id_col: Column name that uniquely identifies each row (e.g. "path", "id").
+                Used for table selection, plot click-to-row mapping, and select_points_by_row_id().
+            plot_state: Optional initial PlotState. If None, defaults are used (first pre-filter value, first numeric x/y).
+            on_table_row_selected: Optional callback invoked when the user selects a row in the data table.
+                Signature: (row_id: str, row_dict: dict[str, Any]) -> None.
+                - row_id: The value in the selected row for unique_row_id_col (as string).
+                - row_dict: The full row as a dict (column name -> value).
+                The controller also clears plot selection and highlights the corresponding point(s) in the plots.
         """
         self.df = df
-        self.roi_id_col = roi_id_col
+        self.pre_filter_columns = pre_filter_columns if pre_filter_columns is not None else ["roi_id"]
         self.unique_row_id_col = unique_row_id_col
         self._on_table_row_selected = on_table_row_selected
 
         # Initialize DataFrameProcessor for data operations
         self.data_processor = DataFrameProcessor(
             df,
-            roi_id_col=roi_id_col,
+            pre_filter_columns=self.pre_filter_columns,
             unique_row_id_col=unique_row_id_col,
         )
 
@@ -77,12 +99,18 @@ class PlotPoolController:
         x_default = num_cols[0]
         y_default = num_cols[1] if len(num_cols) >= 2 else num_cols[0]
         
-        roi_values = self.data_processor.get_roi_values()
+        # Default pre_filter: first column's first value, rest (none); or all (none)
+        initial_pre_filter = default_pre_filter(self.pre_filter_columns)
+        if self.pre_filter_columns:
+            first_vals = self.data_processor.get_pre_filter_values(self.pre_filter_columns[0])
+            if first_vals:
+                initial_pre_filter = dict(initial_pre_filter)
+                initial_pre_filter[self.pre_filter_columns[0]] = first_vals[0]
 
         # Initialize with 2 plot states (extensible to 4)
         if plot_state is None:
             default_state = PlotState(
-                roi_id=roi_values[0],
+                pre_filter=initial_pre_filter,
                 xcol=x_default,
                 ycol=y_default,
             )
@@ -150,14 +178,22 @@ class PlotPoolController:
         )
 
     def select_points_by_row_id(self, row_id: str) -> None:
-        """Programmatically select points by row_id (delegates to selection handler)."""
+        """Programmatically select points in the plots that match the given row_id (public API).
+
+        Finds the row_id in the current filtered data (per plot state), highlights
+        the corresponding point(s) in scatter/swarm plots, and updates the selection label.
+        Use this after table selection or external logic to sync plot selection.
+
+        Args:
+            row_id: Value from unique_row_id_col that identifies the row (e.g. path or id as string).
+        """
         self._selection_handler.select_by_row_id(row_id, self.plot_states)
     
-    def _handle_table_row_selected(self, selected_row_id:str, row_dict:dict) -> None:
+    def _handle_table_row_selected(self, selected_row_id: str, row_dict: dict) -> None:
         """Handle row selection from DataFrameTableView.
-        
+
         Args:
-            row_id: The unique row identifier from unique_row_id_col.
+            selected_row_id: The unique row identifier (value from unique_row_id_col).
             row_dict: Dictionary containing all column values for the selected row.
         """
         # Call user-provided callback if set
@@ -174,10 +210,8 @@ class PlotPoolController:
 
 
     def _get_filtered_df(self, state: PlotState) -> pd.DataFrame:
-        """Return dataframe filtered by state.roi_id for selection/plot use."""
-        if state.roi_id and state.roi_id != 0:
-            return self.data_processor.filter_by_roi(state.roi_id)
-        return self.data_processor.df.dropna(subset=[self.data_processor.unique_row_id_col])
+        """Return dataframe filtered by state.pre_filter for selection/plot use."""
+        return self.data_processor.filter_by_pre_filters(state.pre_filter)
 
     def _set_selection_label_count(self, count: int) -> None:
         """Update selection label text (callback from selection handler)."""
@@ -203,12 +237,15 @@ class PlotPoolController:
     # ----------------------------
 
     def build(self, *, container: Optional[ui.element] = None) -> None:
-        """Build the main UI layout with header, splitter, controls, and plot.
-        
+        """Build the main UI (public API). Call once to render the pool plot.
+
+        Creates header, vertical splitter (table on top, controls+plots below),
+        pre-filter dropdowns, control panel, and plot panel. Layout and plot state
+        may be restored from saved config if present.
+
         Args:
-            container: Optional container element to build into. If provided, all UI
-                widgets will be created inside this container. If None, widgets are
-                created at the top level (backward compatible).
+            container: Optional NiceGUI container to build into. If None, widgets
+                are created at the current top level.
         """
         # Helper to conditionally use container context or top-level
         def _build_content():
@@ -261,7 +298,10 @@ class PlotPoolController:
                 ).classes("w-full h-full")
             
             # LEFT: Control panel
-            roi_options = ["(none)"] + [str(r) for r in self.data_processor.get_roi_values()]
+            pre_filter_options = {
+                col: [PRE_FILTER_NONE] + [str(v) for v in self.data_processor.get_pre_filter_values(col)]
+                for col in self.pre_filter_columns
+            }
             self._control_panel = PoolControlPanel(
                 self.df,
                 layout=self.layout,
@@ -278,7 +318,7 @@ class PlotPoolController:
                 on_y_column_selected=self._on_y_column_selected,
             )
             with self._mainSplitter.before:
-                self._control_panel.build(roi_options=roi_options)
+                self._control_panel.build(pre_filter_options=pre_filter_options)
 
             # RIGHT: Plot panel
             with self._mainSplitter.after:
@@ -306,24 +346,23 @@ class PlotPoolController:
         subtitle: Optional[str] = None,
         config: Optional[LazySectionConfig] = None,
     ) -> LazySection:
-        """Build the UI wrapped in a LazySection for lazy rendering.
-        
-        This is a convenience method that wraps build() in a LazySection.
-        The UI will only be rendered when the expansion is opened.
-        
+        """Build the UI inside a LazySection so it renders only when opened (public API).
+
+        Same UI as build(), but wrapped in a ui.expansion. Content is created when
+        the user opens the section, which avoids heavy work on initial page load.
+
         Args:
-            title: Title for the expansion section.
-            subtitle: Optional subtitle text shown below the title.
-            config: Optional LazySectionConfig. If None, uses defaults
-                (render_once=True, clear_on_close=False, show_spinner=True).
-        
+            title: Title shown on the expansion header.
+            subtitle: Optional text shown below the title inside the section.
+            config: Optional LazySectionConfig. If None, uses render_once=True,
+                clear_on_close=False, show_spinner=True.
+
         Returns:
-            LazySection instance containing the plot controller UI.
-        
+            LazySection instance. The section renders the plot controller UI on first open.
+
         Example:
-            >>> ctrl = PlotPoolController(df)
-            >>> lazy_section = ctrl.build_lazy("My Plots", subtitle="Click to load")
-            >>> # UI is now wrapped in a lazy section
+            >>> ctrl = PlotPoolController(df, pre_filter_columns=["roi_id"])
+            >>> section = ctrl.build_lazy("Pool Plot", subtitle="Click to load")
         """
         if config is None:
             config = LazySectionConfig(render_once=True, clear_on_close=False, show_spinner=True)
@@ -675,11 +714,7 @@ class PlotPoolController:
 
             logger.info(f"Plotly click on plot {plot_index + 1}: plot_type={state.plot_type.value}, row_id={row_id}")
 
-            # Filter by ROI if roi_id is set (not 0/None from "(none)" selection)
-            if state.roi_id and state.roi_id != 0:
-                df_f = self.data_processor.filter_by_roi(state.roi_id)
-            else:
-                df_f = self.data_processor.df.dropna(subset=[self.data_processor.unique_row_id_col])
+            df_f = self._get_filtered_df(state)
             idx = self._id_to_index_filtered.get(row_id)
             if idx is None:
                 logger.warning(f"Row ID {row_id} not found in filtered index")
@@ -687,7 +722,7 @@ class PlotPoolController:
 
             row = df_f.iloc[idx]
             if self._clicked_label:
-                self._clicked_label.text = f"Plot {plot_index + 1}: ROI={state.roi_id} \n {self.unique_row_id_col}={row_id} \n (filtered iloc={idx})"
+                self._clicked_label.text = f"Plot {plot_index + 1}: {format_pre_filter_display(state.pre_filter)} \n {self.unique_row_id_col}={row_id} \n (filtered iloc={idx})"
             logger.info(f"Clicked row data: {row.to_dict()}")
             pprint(row.to_dict())
             return
@@ -698,7 +733,7 @@ class PlotPoolController:
             y = p0.get("y")
             logger.info(f"Plotly click on plot {plot_index + 1} grouped plot: group={x}, y={y}")
             if self._clicked_label:
-                self._clicked_label.text = f"Plot {plot_index + 1}: ROI={state.roi_id} clicked group={x}, y={y} (aggregated)"
+                self._clicked_label.text = f"Plot {plot_index + 1}: {format_pre_filter_display(state.pre_filter)} clicked group={x}, y={y} (aggregated)"
             return
 
     # ----------------------------
@@ -726,7 +761,7 @@ class PlotPoolController:
         
         logger.info(
             f"Replotting plot {self.current_plot_index + 1} - "
-            f"plot_type={state.plot_type.value}, roi_id={state.roi_id}, "
+            f"plot_type={state.plot_type.value}, pre_filter={state.pre_filter}, "
             f"xcol={state.xcol}, ycol={state.ycol}, group_col={state.group_col}, "
             f"show_raw={state.show_raw}, show_legend={state.show_legend}, "
             f"plot_type_changed={plot_type_changed}"
@@ -781,11 +816,7 @@ class PlotPoolController:
         Returns:
             Plotly figure dictionary.
         """
-        # Filter by ROI if roi_id is set (not 0/None from "(none)" selection)
-        if state.roi_id and state.roi_id != 0:
-            df_f = self.data_processor.filter_by_roi(state.roi_id)
-        else:
-            df_f = self.data_processor.df.dropna(subset=[self.data_processor.unique_row_id_col])
+        df_f = self._get_filtered_df(state)
         self._id_to_index_filtered = self.data_processor.build_row_id_index(df_f)
         
         logger.debug(f"Making figure: plot_type={state.plot_type.value}, filtered_rows={len(df_f)}")

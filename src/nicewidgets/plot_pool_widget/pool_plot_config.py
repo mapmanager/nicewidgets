@@ -32,7 +32,8 @@ from nicewidgets.plot_pool_widget.plot_state import PlotState
 logger = get_logger(__name__)
 
 # Increment when you make a breaking change to the on-disk JSON schema.
-SCHEMA_VERSION: int = 2
+# v3: PlotState uses pre_filter (dict) instead of roi_id; old configs are rejected (defaults used).
+SCHEMA_VERSION: int = 3
 
 
 @dataclass
@@ -43,9 +44,12 @@ class PoolPlotConfigData:
     Keep fields JSON-friendly:
     - primitives, lists, dicts
     
-    Schema v2:
+    Schema v3:
     - layout: str (e.g., "1x1", "1x2", "2x1", "2x2")
-    - plot_states: List[Dict[str, Any]] - list of PlotState dicts (one per plot in layout)
+    - plot_states: List[Dict[str, Any]] - list of PlotState dicts (pre_filter instead of roi_id).
+    
+    Schema v2:
+    - plot_states list (same structure but PlotState may have roi_id; not loaded if version mismatch).
     
     Schema v1 (backward compatibility):
     - plot_state: Dict[str, Any] - single PlotState dict (converted to plot_states list)

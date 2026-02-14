@@ -59,7 +59,7 @@ def main() -> None:
         # ui.label("Example 2: Lazy Usage (renders only when expansion is opened)").classes("text-lg font-semibold mt-4")
         # ui.label("The plot controller below uses build_lazy() - it only renders when you open the expansion.").classes("text-sm text-gray-600")
         
-        ctrl_lazy = PlotPoolController(df, roi_id_col="roi_id", unique_row_id_col="unique_row_id", plot_state=None)
+        ctrl_lazy = PlotPoolController(df, pre_filter_columns=["roi_id"], unique_row_id_col="unique_row_id", plot_state=None)
         ctrl_lazy.build_lazy(
             "Pool Plot (Lazy)",
             # subtitle="Click to load plot controls and visualization",

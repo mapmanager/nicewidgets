@@ -10,7 +10,6 @@ from typing import Any, Callable, Optional
 
 import pandas as pd
 from nicegui import ui
-from nicegui.events import GenericEventArguments
 
 from nicewidgets.plot_pool_widget.lazy_section import LazySection, LazySectionConfig
 from nicewidgets.plot_pool_widget.plot_helpers import _ensure_aggrid_compact_css
@@ -49,14 +48,14 @@ class DataFrameTableView:
             unique_row_id_col: Column name containing unique row identifiers.
             on_row_selected: Optional callback called when a row is selected.
                 Receives (unique_row_id: str, row_dict: dict) where unique_row_id is the
-                value from row_id_col and row_dict is the full row data.
+                value from unique_row_id_col and row_dict is the full row data.
         """
         self.df = df
         self.unique_row_id_col = unique_row_id_col
         self._on_row_selected = on_row_selected
         self._aggrid: Optional[ui.aggrid] = None
         
-        # Validate row_id_col exists
+        # Validate unique_row_id_col exists
         if self.unique_row_id_col not in df.columns:
             raise ValueError(f"unique_row_id_col '{unique_row_id_col}' not found in dataframe columns")
     

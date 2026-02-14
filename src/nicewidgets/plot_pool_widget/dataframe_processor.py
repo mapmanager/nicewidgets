@@ -6,10 +6,12 @@ operations, separating data processing logic from UI/plotting concerns.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
+
+from nicewidgets.plot_pool_widget.pre_filter_conventions import PRE_FILTER_NONE
 
 
 class DataFrameProcessor:
@@ -22,61 +24,71 @@ class DataFrameProcessor:
     
     Attributes:
         df: The source DataFrame.
-        roi_id_col: Column name containing ROI identifiers.
-        row_id_col: Column name containing unique row identifiers.
+        pre_filter_columns: Column names used for pre-filtering (categorical).
+        unique_row_id_col: Column name containing unique row identifiers.
     """
     
     def __init__(
         self,
         df: pd.DataFrame,
         *,
-        roi_id_col: str = "roi_id",
+        pre_filter_columns: list[str],
         unique_row_id_col: str = "path",
     ) -> None:
         """Initialize DataFrameProcessor with dataframe and column configuration.
         
         Args:
             df: DataFrame containing plot data with required columns.
-            roi_id_col: Column name containing ROI identifiers.
-            row_id_col: Column name containing unique row identifiers.
+            pre_filter_columns: Column names for pre-filtering (each must exist in df).
+            unique_row_id_col: Column name containing unique row identifiers.
             
         Raises:
-            ValueError: If required columns are missing or no ROI values found.
+            ValueError: If required columns are missing or no values in a pre-filter column.
         """
         self.df = df
-        self.roi_id_col = roi_id_col
+        self.pre_filter_columns = list(pre_filter_columns)
         self.unique_row_id_col = unique_row_id_col
 
-        if self.roi_id_col not in df.columns:
-            raise ValueError(f"df must contain required column {roi_id_col!r}")
         if self.unique_row_id_col not in df.columns:
             raise ValueError(f"df must contain required unique id column {unique_row_id_col!r}")
+        for col in self.pre_filter_columns:
+            if col not in df.columns:
+                raise ValueError(f"df must contain pre_filter column {col!r}")
+            if len(self.get_pre_filter_values(col)) == 0:
+                raise ValueError(f"No values found in pre_filter column {col!r}")
 
-        roi_values = self.get_roi_values()
-        if not roi_values:
-            raise ValueError(f"No ROI values found in column {roi_id_col!r}")
-
-    def get_roi_values(self) -> list[int]:
-        """Get sorted list of unique ROI IDs from the dataframe.
-        
-        Returns:
-            Sorted list of unique ROI ID integers.
-        """
-        s = pd.to_numeric(self.df[self.roi_id_col], errors="coerce").dropna().astype(int)
-        vals = sorted(set(s.tolist()))
-        return vals
-
-    def filter_by_roi(self, roi_id: int) -> pd.DataFrame:
-        """Filter dataframe to rows matching the ROI ID.
+    def get_pre_filter_values(self, column: str) -> list[Any]:
+        """Get sorted list of unique values for a pre-filter column.
         
         Args:
-            roi_id: ROI ID to filter by.
+            column: Must be in pre_filter_columns.
             
         Returns:
-            Filtered dataframe containing only rows with matching ROI ID,
-            with rows missing unique_row_id_col removed.
+            Sorted list of unique values (type preserved from dataframe).
         """
-        df_f = self.df[self.df[self.roi_id_col].astype(int) == int(roi_id)]
+        if column not in self.pre_filter_columns:
+            raise ValueError(f"Unknown pre_filter column {column!r}")
+        s = self.df[column].dropna()
+        # Sort by string representation for stable order
+        vals = sorted(set(s.tolist()), key=lambda x: (str(x), x))
+        return vals
+
+    def filter_by_pre_filters(self, selections: dict[str, Any]) -> pd.DataFrame:
+        """Filter dataframe by pre-filter column selections.
+        
+        Args:
+            selections: Map column name -> selected value. PRE_FILTER_NONE means no filter for that column.
+            
+        Returns:
+            Filtered dataframe (AND across columns), with rows missing unique_row_id_col removed.
+        """
+        df_f = self.df
+        for col in self.pre_filter_columns:
+            val = selections.get(col, PRE_FILTER_NONE)
+            if val is None or val == PRE_FILTER_NONE:
+                continue
+            # Compare as strings so UI string selection matches numeric columns
+            df_f = df_f[df_f[col].astype(str) == str(val)]
         df_f = df_f.dropna(subset=[self.unique_row_id_col])
         return df_f
 

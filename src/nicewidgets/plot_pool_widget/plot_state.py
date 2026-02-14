@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional
 
+from nicewidgets.plot_pool_widget.pre_filter_conventions import PRE_FILTER_NONE
+
 
 class PlotType(Enum):
     """Enumeration of available plot types."""
@@ -27,10 +29,10 @@ class PlotState:
     """Configuration state for a single plot.
     
     This dataclass holds all configurable parameters for a plot, including
-    data selection (ROI, columns), plot type, visual options, and statistics
-    display settings.
+    data selection (pre-filter categorical columns, x/y columns), plot type,
+    visual options, and statistics display settings.
     """
-    roi_id: int
+    pre_filter: dict[str, Any]  # column name -> selected value; PRE_FILTER_NONE = no filter
     xcol: str
     ycol: str
     plot_type: PlotType = PlotType.SCATTER
@@ -58,7 +60,7 @@ class PlotState:
             Dictionary representation of PlotState with all fields.
         """
         return {
-            "roi_id": self.roi_id,
+            "pre_filter": self.pre_filter,
             "xcol": self.xcol,
             "ycol": self.ycol,
             "plot_type": self.plot_type.value,  # Convert enum to string
@@ -89,15 +91,25 @@ class PlotState:
             
         Returns:
             PlotState instance created from dictionary data.
+            
+        Raises:
+            ValueError: If data contains legacy "roi_id" (schema v3 uses pre_filter only).
         """
+        if "roi_id" in data:
+            raise ValueError(
+                "PlotState schema v3: 'roi_id' is no longer supported; use 'pre_filter'. "
+                "Config file may be from an older version; delete or bump schema_version."
+            )
         # Convert plot_type string back to enum (legacy "split_scatter" -> scatter)
         pt_val = data.get("plot_type", PlotType.SCATTER.value)
         if pt_val == "split_scatter":
             pt_val = "scatter"
         plot_type = PlotType(pt_val)
-        
+        pre_filter = data.get("pre_filter")
+        if not isinstance(pre_filter, dict):
+            pre_filter = {}
         return cls(
-            roi_id=int(data.get("roi_id", 0)),
+            pre_filter=dict(pre_filter),
             xcol=str(data.get("xcol", "")),
             ycol=str(data.get("ycol", "")),
             plot_type=plot_type,

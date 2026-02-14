@@ -16,6 +16,7 @@ from nicewidgets.utils.logging import get_logger
 from nicewidgets.plot_pool_widget.plot_state import PlotType, PlotState
 from nicewidgets.plot_pool_widget.dataframe_processor import DataFrameProcessor
 from nicewidgets.plot_pool_widget.plot_helpers import is_categorical_column
+from nicewidgets.plot_pool_widget.pre_filter_conventions import format_pre_filter_display
 
 logger = get_logger(__name__)
 
@@ -37,26 +38,26 @@ PLOTLY_SYMBOLS = [
 
 class FigureGenerator:
     """Generates Plotly figure dictionaries from data and plot state.
-    
+
     Encapsulates all Plotly figure generation logic, including different plot types
     (scatter, swarm, grouped, histogram, cumulative_histogram) and statistical
     overlays (mean/std/sem traces).
-    
+
     Attributes:
         data_processor: DataFrameProcessor instance for data operations.
-        row_id_col: Column name containing unique row identifiers.
+        unique_row_id_col: Column name containing unique row identifiers.
     """
-    
+
     def __init__(
         self,
         data_processor: DataFrameProcessor,
         unique_row_id_col: str = "path",
     ) -> None:
         """Initialize FigureGenerator with data processor and row ID column.
-        
+
         Args:
             data_processor: DataFrameProcessor instance for data operations.
-            row_id_col: Column name containing unique row identifiers.
+            unique_row_id_col: Column name containing unique row identifiers.
         """
         self.data_processor = data_processor
         self.unique_row_id_col = unique_row_id_col
@@ -71,7 +72,7 @@ class FigureGenerator:
         """Generate Plotly figure dictionary based on plot state.
         
         Args:
-            df_f: Filtered dataframe (already filtered by ROI).
+            df_f: Filtered dataframe (already filtered by pre_filter).
             state: PlotState to use for generating the figure.
             selected_row_ids: If set, these row_ids are shown as selected (linked selection).
             
@@ -80,7 +81,7 @@ class FigureGenerator:
         """
         logger.info(
             f"FigureGenerator.make_figure: plot_type={state.plot_type.value}, "
-            f"filtered_rows={len(df_f)}, roi_id={state.roi_id}, "
+            f"filtered_rows={len(df_f)}, pre_filter={state.pre_filter}, "
             f"xcol={state.xcol}, ycol={state.ycol}"
         )
 
@@ -375,13 +376,12 @@ class FigureGenerator:
             x=x,
             y=y,
             mode="markers",
-            name=f"ROI {state.roi_id}",
+            name=format_pre_filter_display(state.pre_filter),
             customdata=row_ids,
             marker=dict(size=state.point_size),
             selectedpoints=selectedpoints,
             selected=selected,
             hovertemplate=(
-                # f"roi_id={state.roi_id}<br>"
                 f"{state.xcol}=%{{x}}<br>"
                 f"{state.ycol}=%{{y}}<br>"
                 # f"{self.row_id_col}=%{{customdata}}<extra></extra>"
@@ -407,7 +407,7 @@ class FigureGenerator:
         
         Uses Plotly's native color and symbol parameters:
         - color: from group_col (like px.scatter with color="grandparent_folder")
-        - symbol: from color_grouping (like px.scatter with symbol="roi_id")
+        - symbol: from color_grouping (e.g. px.scatter with symbol=color_grouping column)
         
         Args:
             df_f: Filtered dataframe.
@@ -846,7 +846,7 @@ class FigureGenerator:
                     x=x_jittered,
                     y=y_values,
                     mode="markers",
-                    name=f"ROI {state.roi_id}" if state.roi_id else "All ROIs",
+                    name=format_pre_filter_display(state.pre_filter),
                     customdata=np.column_stack([x_cat_values, row_id_values]),
                     marker=dict(size=state.point_size),
                     selectedpoints=sp,
@@ -920,7 +920,7 @@ class FigureGenerator:
             fig.add_trace(go.Box(
                 x=tmp["x"],
                 y=tmp["y"],
-                name=f"ROI {state.roi_id}" if state.roi_id else "All ROIs",
+                name=format_pre_filter_display(state.pre_filter),
                 boxpoints="outliers",
                 jitter=0.3,
                 pointpos=-1.8,
@@ -980,7 +980,7 @@ class FigureGenerator:
             fig.add_trace(go.Violin(
                 x=tmp["x"],
                 y=tmp["y"],
-                name=f"ROI {state.roi_id}" if state.roi_id else "All ROIs",
+                name=format_pre_filter_display(state.pre_filter),
                 box_visible=True,
                 meanline_visible=True,
                 showlegend=state.show_legend,
@@ -1033,7 +1033,7 @@ class FigureGenerator:
             x=agg.index.astype(str).tolist(),
             y=agg.values.tolist(),
             mode="markers+lines",
-            name=f"ROI {state.roi_id}",
+            name=format_pre_filter_display(state.pre_filter),
         ))
         fig.update_layout(
             margin=dict(l=40, r=20, t=40, b=80),
@@ -1073,7 +1073,7 @@ class FigureGenerator:
                 x=x_plot,
                 y=y_plot,
                 mode="lines",
-                name=f"ROI {state.roi_id}",
+                name=format_pre_filter_display(state.pre_filter),
                 line=dict(shape="hv"),
                 hovertemplate=f"{state.xcol}=%{{x}}<br>Cumulative proportion=%{{y:.3f}}<extra></extra>",
             ))
@@ -1132,7 +1132,7 @@ class FigureGenerator:
         if not state.group_col:
             fig.add_trace(go.Histogram(
                 x=x.values,
-                name=f"ROI {state.roi_id}",
+                name=format_pre_filter_display(state.pre_filter),
                 nbinsx=50,
                 showlegend=state.show_legend,
             ))

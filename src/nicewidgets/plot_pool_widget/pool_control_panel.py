@@ -19,6 +19,7 @@ from nicewidgets.plot_pool_widget.plot_helpers import (
     categorical_candidates,
     _ensure_aggrid_compact_css,
 )
+from nicewidgets.plot_pool_widget.pre_filter_conventions import PRE_FILTER_NONE
 
 logger = get_logger(__name__)
 
@@ -60,7 +61,7 @@ class PoolControlPanel:
         # Widget refs (set in build())
         self._layout_select: Optional[ui.select] = None
         self._plot_radio: Optional[ui.radio] = None
-        self._roi_select: Optional[ui.select] = None
+        self._pre_filter_selects: dict[str, ui.select] = {}
         self._type_select: Optional[ui.select] = None
         self._x_aggrid: Optional[ui.aggrid] = None
         self._y_aggrid: Optional[ui.aggrid] = None
@@ -83,9 +84,16 @@ class PoolControlPanel:
 
     def build(
         self,
-        roi_options: list[str],
+        pre_filter_options: dict[str, list[str]],
     ) -> None:
-        """Build the control panel inside the current UI container. Call once inside splitter.before."""
+        """Build the control panel inside the current UI container.
+
+        Creates layout select, plot radio, pre-filter dropdowns (one per key in
+        pre_filter_options), plot type and options. Call once inside splitter.before.
+
+        Args:
+            pre_filter_options: Map column name -> list of option strings (e.g. ["(none)", "1", "2"]).
+        """
         with ui.column().classes("w-full h-full p-4 gap-4 overflow-y-auto"):
             with ui.row().classes("w-full gap-2"):
                 self._layout_select = ui.select(
@@ -111,12 +119,18 @@ class PoolControlPanel:
 
             with ui.card().classes("w-full"):
                 ui.label("Pre Filter").classes("text-sm font-semibold")
-                self._roi_select = ui.select(
-                    options=roi_options,
-                    value=str(self._initial_state.roi_id) if self._initial_state.roi_id else "(none)",
-                    label="ROI",
-                    on_change=self._on_any_change,
-                ).classes("w-full")
+                self._pre_filter_selects = {}
+                for col, options in pre_filter_options.items():
+                    initial_val = self._initial_state.pre_filter.get(col, PRE_FILTER_NONE)
+                    initial_str = str(initial_val) if initial_val is not None else PRE_FILTER_NONE
+                    if initial_str not in options and options:
+                        initial_str = options[0]
+                    self._pre_filter_selects[col] = ui.select(
+                        options=options,
+                        value=initial_str,
+                        label=col,
+                        on_change=self._on_any_change,
+                    ).classes("w-full")
                 self._abs_value_checkbox = ui.checkbox(
                     "Absolute Value",
                     value=self._initial_state.use_absolute_value,
@@ -318,9 +332,11 @@ class PoolControlPanel:
 
     def bind_state(self, state: PlotState) -> None:
         """Populate all widgets from a PlotState."""
-        if not self._roi_select or not self._type_select or not self._x_aggrid or not self._y_aggrid:
+        if not self._pre_filter_selects or not self._type_select or not self._x_aggrid or not self._y_aggrid:
             return
-        self._roi_select.value = str(state.roi_id) if state.roi_id else "(none)"
+        for col, sel in self._pre_filter_selects.items():
+            val = state.pre_filter.get(col, PRE_FILTER_NONE)
+            sel.value = str(val) if val is not None else PRE_FILTER_NONE
         self._type_select.value = state.plot_type.value
         self._ystat_select.value = state.ystat
         self._group_select.value = state.group_col if state.group_col else "(none)"
@@ -349,8 +365,10 @@ class PoolControlPanel:
 
     def get_state(self, *, xcol: str, ycol: str) -> PlotState:
         """Build PlotState from current widget values. xcol/ycol come from controller (aggrid async)."""
-        roi_value = str(self._roi_select.value)
-        roi_id = int(roi_value) if roi_value != "(none)" else 0
+        pre_filter = {
+            col: str(sel.value) if sel.value is not None else PRE_FILTER_NONE
+            for col, sel in self._pre_filter_selects.items()
+        }
         plot_type_str = str(self._type_select.value)
         try:
             plot_type = PlotType(plot_type_str)
@@ -361,7 +379,7 @@ class PoolControlPanel:
         cgv = str(self._color_grouping_select.value)
         color_grouping = None if cgv == "(none)" else cgv
         return PlotState(
-            roi_id=roi_id,
+            pre_filter=pre_filter,
             xcol=xcol,
             ycol=ycol,
             plot_type=plot_type,
