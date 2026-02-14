@@ -406,9 +406,18 @@ class PlotPoolController:
                     )
                     self._control_panel.build(pre_filter_options=pre_filter_options)
 
-            # RIGHT: Plot panel
+            # RIGHT: Plot panel, then new vertical splitter (plot top, empty bottom) — same orientation as table|plots
             with self._mainSplitter.after:
-                self._plot_container = ui.column().classes("w-full h-full")
+                plot_empty_splitter_val = 75.0  # % for plot, rest empty
+                with ui.splitter(
+                    value=plot_empty_splitter_val,
+                    limits=(20, 95),
+                    horizontal=True,  # same as _verticalSplitter: top/bottom
+                ).classes("w-full h-full") as plot_empty_splitter:
+                    with plot_empty_splitter.before:
+                        self._plot_container = ui.column().classes("w-full h-full")
+                    with plot_empty_splitter.after:
+                        ui.column().classes("w-full h-full min-h-0")  # empty pane below plot
             self._rebuild_plot_panel()
 
             self._control_panel.sync_controls(
