@@ -8,6 +8,7 @@ when expansion is opened). See PlotPoolController class docstring for public API
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 import pandas as pd
@@ -53,6 +54,9 @@ class PlotPoolController:
         *,
         pre_filter_columns: Optional[list[str]] = None,
         unique_row_id_col: str = "path",
+        db_type: str = "default",
+        app_name: Optional[str] = None,
+        config_path: Optional[Path] = None,
         plot_state: Optional[PlotState] = None,
         on_table_row_selected: Optional[Callable[[str, dict[str, Any]], None]] = None,
         on_refresh_requested: Optional[Callable[[], pd.DataFrame]] = None,
@@ -67,6 +71,17 @@ class PlotPoolController:
                 Default is ["roi_id"]. Pass a list of categorical column names, e.g. ["roi_id"] or ["condition", "batch"].
             unique_row_id_col: Column name that uniquely identifies each row (e.g. "path", "id").
                 Used for table selection, plot click-to-row mapping, and select_points_by_row_id().
+            db_type: Identifies which data (and thus which DataFrame columns) this controller uses.
+                Used only to choose the config file so saved column names (xcol, ycol, group_col, etc.)
+                stay valid for that type. Default "default" uses pool_plot_config.json; any other value
+                uses pool_plot_config_{db_type}.json (e.g. "radon_db" -> pool_plot_config_radon_db.json).
+                Recommended: alphanumeric and underscore only (e.g. radon_db, velocity_event_db).
+                No filesystem sanitization is applied; invalid characters are not yet handled.
+            app_name: Optional application name for config directory (e.g. "kymflow").
+                Passed through to config load/save so non-kymflow apps can use their own config directory.
+                When None, "kymflow" is used so existing behavior is unchanged.
+            config_path: Optional full path to config file. When set, load/save use this path and
+                ignore db_type/app_name. Used mainly for tests to avoid touching user config.
             plot_state: Optional initial PlotState. If None, defaults are used (first pre-filter value, first numeric x/y).
             on_table_row_selected: Optional callback invoked when the user selects a row in the data table.
                 Signature: (row_id: str, row_dict: dict[str, Any]) -> None.
@@ -81,6 +96,9 @@ class PlotPoolController:
         self.df = df
         self.pre_filter_columns = pre_filter_columns if pre_filter_columns is not None else ["roi_id"]
         self.unique_row_id_col = unique_row_id_col
+        self.db_type = db_type
+        self._app_name = app_name
+        self._config_path = config_path
         self._on_table_row_selected = on_table_row_selected
         self._on_refresh_requested = on_refresh_requested
 
@@ -127,22 +145,31 @@ class PlotPoolController:
         
         # Try to load saved config, otherwise use provided/default plot_state
         from nicewidgets.plot_pool_widget.pool_plot_config import PoolPlotConfig
-        config = PoolPlotConfig.load()
+        if self._config_path is not None:
+            config = PoolPlotConfig.load(config_path=self._config_path)
+        else:
+            config = PoolPlotConfig.load(
+                filename=self._config_filename(),
+                app_name=self._app_name if self._app_name is not None else "kymflow",
+            )
         loaded_plot_states = config.get_plot_states()
         loaded_layout = config.get_layout()
         self._control_panel_splitter_value: float = config.get_control_panel_splitter_value()
         self._splitter_save_timer: Optional[Any] = None
 
         if loaded_plot_states:
-            logger.info(f"Loaded {len(loaded_plot_states)} plot state(s) and layout '{loaded_layout}' from pool_plot_config.json")
+            config_name = str(self._config_path) if self._config_path is not None else self._config_filename()
+            logger.info(f"Loaded {len(loaded_plot_states)} plot state(s) and layout '{loaded_layout}' from {config_name}")
+            # Validate loaded states against current df columns and apply fallbacks
+            validated = [self._validate_plot_state_columns(ps) for ps in loaded_plot_states]
             # Use loaded layout
             self.layout = loaded_layout
-            # Use loaded plot states, pad with default_state if needed
+            # Use validated plot states, pad with default_state if needed
             num_plots_needed = self._get_num_plots_for_layout(loaded_layout)
             self.plot_states = []
             for i in range(num_plots_needed):
-                if i < len(loaded_plot_states):
-                    self.plot_states.append(loaded_plot_states[i])
+                if i < len(validated):
+                    self.plot_states.append(validated[i])
                 else:
                     self.plot_states.append(PlotState.from_dict(default_state.to_dict()))
             # Update stored default to match first loaded state
@@ -576,11 +603,83 @@ class PlotPoolController:
         self._splitter_save_timer = None
         try:
             from nicewidgets.plot_pool_widget.pool_plot_config import PoolPlotConfig
-            config = PoolPlotConfig.load()
+            if self._config_path is not None:
+                config = PoolPlotConfig.load(config_path=self._config_path)
+            else:
+                config = PoolPlotConfig.load(
+                    filename=self._config_filename(),
+                    app_name=self._app_name if self._app_name is not None else "kymflow",
+                )
             config.set_control_panel_splitter_value(self._control_panel_splitter_value)
             config.save()
         except Exception as ex:
             logger.warning(f"Failed to save splitter config: {ex}")
+
+    def _config_filename(self) -> str:
+        """Return config filename for current db_type. 'default' -> pool_plot_config.json, else pool_plot_config_{db_type}.json."""
+        if self.db_type == "default":
+            return "pool_plot_config.json"
+        return f"pool_plot_config_{self.db_type}.json"
+
+    def _validate_plot_state_columns(self, state: PlotState) -> PlotState:
+        """Ensure state's xcol, ycol, group_col, color_grouping and pre_filter keys exist in df; fallback and log if not."""
+        num_cols = numeric_columns(self.df)
+        if not num_cols:
+            return state
+        x_default = num_cols[0]
+        y_default = num_cols[1] if len(num_cols) >= 2 else num_cols[0]
+        cols = set(self.df.columns)
+        changed = False
+        xcol = state.xcol
+        ycol = state.ycol
+        if state.xcol not in cols:
+            logger.warning(f"Loaded xcol {state.xcol!r} not in dataframe columns, using {x_default!r}")
+            xcol = x_default
+            changed = True
+        if state.ycol not in cols:
+            logger.warning(f"Loaded ycol {state.ycol!r} not in dataframe columns, using {y_default!r}")
+            ycol = y_default
+            changed = True
+        group_col = state.group_col
+        if state.group_col is not None and state.group_col not in cols:
+            logger.warning(f"Loaded group_col {state.group_col!r} not in dataframe columns, using None")
+            group_col = None
+            changed = True
+        color_grouping = state.color_grouping
+        if state.color_grouping is not None and state.color_grouping not in cols:
+            logger.warning(f"Loaded color_grouping {state.color_grouping!r} not in dataframe columns, using None")
+            color_grouping = None
+            changed = True
+        pre_filter = dict(state.pre_filter)
+        for key in list(pre_filter.keys()):
+            if key not in cols:
+                logger.warning(f"Loaded pre_filter key {key!r} not in dataframe columns, removing")
+                del pre_filter[key]
+                changed = True
+        if not changed:
+            return state
+        return PlotState(
+            pre_filter=pre_filter,
+            xcol=xcol,
+            ycol=ycol,
+            plot_type=state.plot_type,
+            group_col=group_col,
+            color_grouping=color_grouping,
+            ystat=state.ystat,
+            use_absolute_value=state.use_absolute_value,
+            swarm_jitter_amount=state.swarm_jitter_amount,
+            swarm_group_offset=state.swarm_group_offset,
+            use_remove_values=state.use_remove_values,
+            remove_values_threshold=state.remove_values_threshold,
+            show_mean=state.show_mean,
+            show_std_sem=state.show_std_sem,
+            std_sem_type=state.std_sem_type,
+            mean_line_width=state.mean_line_width,
+            error_line_width=state.error_line_width,
+            show_raw=state.show_raw,
+            point_size=state.point_size,
+            show_legend=state.show_legend,
+        )
 
     def _get_num_plots_for_layout(self, layout_str: str) -> int:
         """Get number of plots needed for a layout string.
@@ -689,7 +788,13 @@ class PlotPoolController:
         self.plot_states[self.current_plot_index] = self._widgets_to_state()
         
         # Load existing config and update layout and plot_states
-        config = PoolPlotConfig.load()
+        if self._config_path is not None:
+            config = PoolPlotConfig.load(config_path=self._config_path)
+        else:
+            config = PoolPlotConfig.load(
+                filename=self._config_filename(),
+                app_name=self._app_name if self._app_name is not None else "kymflow",
+            )
         config.set_layout(self.layout)
         config.set_plot_states(self.plot_states)
         config.save()

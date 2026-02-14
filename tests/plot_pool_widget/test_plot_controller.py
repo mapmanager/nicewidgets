@@ -33,12 +33,14 @@ def sample_dataframe():
 
 
 @pytest.fixture
-def plot_controller(sample_dataframe):
-    """Create a PlotPoolController instance for testing."""
+def plot_controller(sample_dataframe, tmp_path):
+    """Create a PlotPoolController instance for testing. Uses a temp config path to avoid touching user config."""
     return PlotPoolController(
         sample_dataframe,
         pre_filter_columns=["roi_id"],
         unique_row_id_col="path",
+        db_type="test",
+        config_path=tmp_path / "pool_plot_config_test.json",
     )
 
 
@@ -263,3 +265,70 @@ def test_plot_with_mean_std(plot_controller, sample_dataframe):
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
+
+
+def test_config_filename_default(sample_dataframe, tmp_path):
+    """_config_filename returns pool_plot_config.json when db_type is 'default'."""
+    ctrl = PlotPoolController(
+        sample_dataframe,
+        pre_filter_columns=["roi_id"],
+        unique_row_id_col="path",
+        db_type="default",
+        config_path=tmp_path / "pool_plot_config.json",
+    )
+    assert ctrl._config_filename() == "pool_plot_config.json"
+
+
+def test_config_filename_custom(sample_dataframe, tmp_path):
+    """_config_filename returns pool_plot_config_{db_type}.json for non-default db_type."""
+    ctrl = PlotPoolController(
+        sample_dataframe,
+        pre_filter_columns=["roi_id"],
+        unique_row_id_col="path",
+        db_type="radon_db",
+        config_path=tmp_path / "pool_plot_config_radon_db.json",
+    )
+    assert ctrl._config_filename() == "pool_plot_config_radon_db.json"
+
+
+def test_validate_plot_state_columns_fallback(sample_dataframe, tmp_path):
+    """Loaded state with missing xcol/ycol gets fallback to first numeric columns."""
+    ctrl = PlotPoolController(
+        sample_dataframe,
+        pre_filter_columns=["roi_id"],
+        unique_row_id_col="path",
+        db_type="test",
+        config_path=tmp_path / "pool_plot_config_test.json",
+    )
+    # sample_dataframe has numeric columns like img_mean, vel_mean, other_numeric
+    state = PlotState(
+        pre_filter={"roi_id": PRE_FILTER_NONE},
+        xcol="nonexistent_x",
+        ycol="nonexistent_y",
+        plot_type=PlotType.SCATTER,
+    )
+    validated = ctrl._validate_plot_state_columns(state)
+    assert validated.xcol != "nonexistent_x"
+    assert validated.ycol != "nonexistent_y"
+    assert validated.xcol in ctrl.df.columns
+    assert validated.ycol in ctrl.df.columns
+
+
+def test_validate_plot_state_columns_pre_filter_removed(sample_dataframe, tmp_path):
+    """Loaded state with pre_filter key not in df has that key removed."""
+    ctrl = PlotPoolController(
+        sample_dataframe,
+        pre_filter_columns=["roi_id"],
+        unique_row_id_col="path",
+        db_type="test",
+        config_path=tmp_path / "pool_plot_config_test.json",
+    )
+    state = PlotState(
+        pre_filter={"roi_id": 1, "not_a_column": "x"},
+        xcol="img_mean",
+        ycol="vel_mean",
+        plot_type=PlotType.SCATTER,
+    )
+    validated = ctrl._validate_plot_state_columns(state)
+    assert "not_a_column" not in validated.pre_filter
+    assert "roi_id" in validated.pre_filter
