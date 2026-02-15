@@ -681,6 +681,7 @@ class PlotPoolController:
             group_col=group_col,
             color_grouping=color_grouping,
             ystat=state.ystat,
+            cv_epsilon=state.cv_epsilon,
             use_absolute_value=state.use_absolute_value,
             swarm_jitter_amount=state.swarm_jitter_amount,
             swarm_group_offset=state.swarm_group_offset,

@@ -177,9 +177,13 @@ def _(
         label="Group/Nesting",
     )
     ystat_select = mo.ui.dropdown(
-        options=["mean", "median", "sum", "count", "std", "min", "max"],
+        options=["mean", "median", "sum", "count", "std", "sem", "min", "max", "cv"],
         value="mean",
         label="Y stat (grouped)",
+    )
+    cv_epsilon = mo.ui.number(
+        start=1e-20, stop=1.0, step=1e-12, value=1e-10,
+        label="CV ε (|μ| < this → NaN)",
     )
 
     swarm_jitter = mo.ui.number(start=0.0, stop=1.0, step=0.05, value=0.35, label="Swarm Jitter")
@@ -221,6 +225,7 @@ def _(
             groups_color,
             groups_nesting,
             ystat_select,
+            cv_epsilon,
             mo.hstack([swarm_jitter, swarm_offset], justify="start", gap=1),
             mo.hstack([show_mean_checkbox, show_std_sem_checkbox, std_sem_select], justify="start", gap=1),
             xcol_select,
@@ -235,6 +240,7 @@ def _(
     )
     return (
         abs_value_checkbox,
+        cv_epsilon,
         error_line_width,
         groups_color,
         groups_nesting,
@@ -270,6 +276,7 @@ def _(
     PlotState,
     PlotType,
     abs_value_checkbox,
+    cv_epsilon,
     data_processor,
     error_line_width,
     figure_generator,
@@ -327,6 +334,7 @@ def _(
         group_col=group_col,
         color_grouping=color_grouping,
         ystat=str(ystat_select.value or "mean"),
+        cv_epsilon=float(cv_epsilon.value) if cv_epsilon.value is not None else 1e-10,
         use_absolute_value=bool(abs_value_checkbox.value),
         swarm_jitter_amount=float(swarm_jitter.value or 0.35),
         swarm_group_offset=float(swarm_offset.value or 0.3),

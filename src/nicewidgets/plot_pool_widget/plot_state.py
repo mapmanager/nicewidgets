@@ -39,6 +39,7 @@ class PlotState:
     group_col: Optional[str] = None    # used by grouped/scatter/swarm; becomes x-axis for box/violin/swarm
     color_grouping: Optional[str] = None  # nested grouping (color parameter) for box/violin/swarm
     ystat: str = "mean"                # used by grouped only
+    cv_epsilon: float = 1e-10           # for grouped cv: treat |mean| < this as zero (return NaN)
     use_absolute_value: bool = False   # apply abs() to x and y values before plotting (numeric only)
     swarm_jitter_amount: float = 0.35  # jitter amount for swarm plots (user-controllable)
     swarm_group_offset: float = 0.3    # offset amount for separating color groups in swarm plots
@@ -67,6 +68,7 @@ class PlotState:
             "group_col": self.group_col,
             "color_grouping": self.color_grouping,
             "ystat": self.ystat,
+            "cv_epsilon": self.cv_epsilon,
             "use_absolute_value": self.use_absolute_value,
             "swarm_jitter_amount": self.swarm_jitter_amount,
             "swarm_group_offset": self.swarm_group_offset,
@@ -116,6 +118,7 @@ class PlotState:
             group_col=data.get("group_col"),  # Can be None
             color_grouping=data.get("color_grouping"),  # Can be None
             ystat=str(data.get("ystat", "mean")),
+            cv_epsilon=float(data.get("cv_epsilon", 1e-10)),
             use_absolute_value=bool(data.get("use_absolute_value", False)),
             swarm_jitter_amount=float(data.get("swarm_jitter_amount", 0.35)),
             swarm_group_offset=float(data.get("swarm_group_offset", 0.3)),

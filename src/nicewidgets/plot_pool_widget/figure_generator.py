@@ -1024,9 +1024,19 @@ class FigureGenerator:
         if stat == "count":
             agg = tmp.groupby("group", dropna=False)["y"].count()
         else:
-            # y is already numeric from get_y_values, but ensure it's numeric for aggregation
             tmp["y"] = pd.to_numeric(tmp["y"], errors="coerce")
-            agg = getattr(tmp.groupby("group", dropna=False)["y"], stat)()
+            if stat == "cv":
+                # Coefficient of variation: std / mean. NaN when |mean| < state.cv_epsilon.
+                grp = tmp.groupby("group", dropna=False)["y"]
+                mean_ = grp.mean()
+                std_ = grp.std(ddof=1)
+                cv = std_ / mean_
+                agg = cv.where(np.abs(mean_) >= state.cv_epsilon, np.nan)
+            elif stat == "sem":
+                # Standard error of the mean: std / sqrt(n)
+                agg = tmp.groupby("group", dropna=False)["y"].sem(ddof=1)
+            else:
+                agg = getattr(tmp.groupby("group", dropna=False)["y"], stat)()
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(

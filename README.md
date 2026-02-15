@@ -184,6 +184,21 @@ Contributions are welcome! Please:
 6. Push to your branch (`git push origin feature/my-feature`)
 7. Open a Pull Request
 
+### Large File Check (Git Hooks)
+
+A pre-commit and pre-push check blocks files over 60MB to avoid accidental pushes of large binaries.
+
+**Install hooks (run once after cloning):**
+
+```bash
+./scripts/install-git-hooks.sh
+```
+
+- **pre-commit**: Checks staged files before `git commit`
+- **pre-push**: Checks all tracked files before `git push`
+
+To change the limit, edit `MAX_SIZE_MB` in `scripts/git-large-file-check.sh`.
+
 ### Code Style
 
 - Type hints throughout
