@@ -1413,7 +1413,6 @@ name = "nicewidgets"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "marimo" },
     { name = "nicegui" },
     { name = "numpy" },
     { name = "pandas" },
@@ -1447,7 +1446,6 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "black", marker = "extra == 'dev'" },
-    { name = "marimo" },
     { name = "marimo", marker = "extra == 'marimo'", specifier = ">=0.15" },
     { name = "matplotlib", marker = "extra == 'mpl'", specifier = ">=3.7.0" },
     { name = "nicegui", specifier = "==3.7.1" },

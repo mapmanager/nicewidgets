@@ -32,7 +32,6 @@ def _():
     if str(_src) not in sys.path:
         sys.path.insert(0, str(_src))
 
-    import pandas as pd
     import plotly.graph_objects as go
 
     from nicewidgets.plot_pool_app.schema import get_config_for_csv, get_data_csv_files, load_csv_for_file
@@ -49,6 +48,8 @@ def _():
         PRE_FILTER_NONE,
         PlotState,
         PlotType,
+        DataFrameProcessor,
+        FigureGenerator,
         csv_files,
         default_csv,
         get_config_for_csv,
@@ -73,6 +74,8 @@ def _(csv_files, default_csv, mo):
 
 @app.cell(hide_code=True)
 def _(
+    DataFrameProcessor,
+    FigureGenerator,
     PRE_FILTER_NONE,
     PlotState,
     PlotType,
@@ -136,73 +139,127 @@ def _(
     default_ycol,
     group_options,
     mo,
+    pre_filter_columns,
     pre_filter_roi_options,
     xcol_options,
     ycol_options,
 ):
+    # --- NiceGUI pool_control_panel layout mapping ---
+    # ui.select -> mo.ui.dropdown, ui.checkbox -> mo.ui.checkbox
+    # ui.number -> mo.ui.number(start, stop, step), ui.row -> mo.hstack
+
+    _roi_col = pre_filter_columns[0]
     pre_filter_roi = mo.ui.dropdown(
         options=pre_filter_roi_options,
         value=PRE_FILTER_NONE,
-        label="Pre filter roi",
+        label=_roi_col,
     )
-    abs_value_checkbox = mo.ui.checkbox(value=False, label="Absolute value")
+    abs_value_checkbox = mo.ui.checkbox(value=False, label="Absolute Value")
+    use_remove_values_checkbox = mo.ui.checkbox(value=False, label="Remove Values")
+    remove_values_threshold = mo.ui.number(
+        start=0.0, stop=1000.0, step=0.1, value=0.0,
+        label="Remove +/-",
+    )
+
     plot_type_select = mo.ui.dropdown(
         options={pt.value.replace("_", " ").title(): pt.value for pt in PlotType},
-        value=PlotType.SCATTER.value,
+        value="Scatter",
         label="Plot type",
     )
     groups_color = mo.ui.dropdown(
         options=group_options,
         value="(none)",
-        label="Groups/Color (x-axis for Swarm/Box/Violin)",
+        label="Group/Color",
     )
     groups_nesting = mo.ui.dropdown(
         options=group_options,
         value="(none)",
-        label="Groups/Nesting (x-axis for Swarm/Box/Violin)",
+        label="Group/Nesting",
     )
+    ystat_select = mo.ui.dropdown(
+        options=["mean", "median", "sum", "count", "std", "min", "max"],
+        value="mean",
+        label="Y stat (grouped)",
+    )
+
+    swarm_jitter = mo.ui.number(start=0.0, stop=1.0, step=0.05, value=0.35, label="Swarm Jitter")
+    swarm_offset = mo.ui.number(start=0.0, stop=1.0, step=0.05, value=0.3, label="Swarm Offset")
+
+    show_mean_checkbox = mo.ui.checkbox(value=False, label="Mean")
+    show_std_sem_checkbox = mo.ui.checkbox(value=False, label="+/-")
+    std_sem_select = mo.ui.dropdown(options=["std", "sem"], value="std", label="")
+
     _valid_xcols = [c for c in xcol_options if c != "(none)"]
     _valid_ycols = [c for c in ycol_options if c != "(none)"]
     xcol_select = mo.ui.dropdown(
         options={c: c for c in _valid_xcols},
         value=default_xcol if default_xcol in _valid_xcols else (_valid_xcols[0] if _valid_xcols else ""),
-        label="X column (Scatter/Histogram)",
+        label="X column",
     )
     ycol_select = mo.ui.dropdown(
         options={c: c for c in _valid_ycols},
         value=default_ycol if default_ycol in _valid_ycols else (_valid_ycols[0] if _valid_ycols else ""),
         label="Y column",
     )
+
+    mean_line_width = mo.ui.number(start=1, stop=10, step=1, value=2, label="Mean Line Width")
+    error_line_width = mo.ui.number(start=1, stop=10, step=1, value=2, label="Error Line Width")
+    show_raw_checkbox = mo.ui.checkbox(value=True, label="Raw")
+    point_size = mo.ui.number(start=1, stop=20, step=1, value=6, label="Point Size")
+    show_legend_checkbox = mo.ui.checkbox(value=True, label="Legend")
+
     plot_btn = mo.ui.run_button(label="Plot")
 
     mo.vstack(
         [
+            mo.md("**Pre Filter**"),
             pre_filter_roi,
             abs_value_checkbox,
+            mo.hstack([use_remove_values_checkbox, remove_values_threshold], justify="start", gap=1),
+            mo.md("**Plot**"),
             plot_type_select,
             groups_color,
             groups_nesting,
+            ystat_select,
+            mo.hstack([swarm_jitter, swarm_offset], justify="start", gap=1),
+            mo.hstack([show_mean_checkbox, show_std_sem_checkbox, std_sem_select], justify="start", gap=1),
             xcol_select,
             ycol_select,
+            mo.md("**Plot Options**"),
+            mo.hstack([mean_line_width, error_line_width], justify="start", gap=1),
+            mo.hstack([show_raw_checkbox, point_size], justify="start", gap=1),
+            show_legend_checkbox,
             plot_btn,
         ],
         gap=1,
     )
     return (
         abs_value_checkbox,
+        error_line_width,
         groups_color,
         groups_nesting,
+        mean_line_width,
         plot_btn,
         plot_type_select,
+        point_size,
         pre_filter_roi,
+        remove_values_threshold,
+        show_legend_checkbox,
+        show_mean_checkbox,
+        show_raw_checkbox,
+        show_std_sem_checkbox,
+        std_sem_select,
+        swarm_jitter,
+        swarm_offset,
+        use_remove_values_checkbox,
         xcol_select,
         ycol_select,
+        ystat_select,
     )
 
 
 @app.cell
 def _(fig, df_f, mo):
-    # Plot display (appears below controls, above gate cell)
     mo.vstack([mo.md(f"**{len(df_f)}** rows (filtered)"), mo.ui.plotly(fig)], gap=1)
     return
 
@@ -214,35 +271,53 @@ def _(
     PlotType,
     abs_value_checkbox,
     data_processor,
+    error_line_width,
     figure_generator,
     go,
     groups_color,
     groups_nesting,
+    mean_line_width,
     mo,
     plot_btn,
     plot_type_select,
+    point_size,
     pre_filter_columns,
     pre_filter_roi,
+    remove_values_threshold,
+    show_legend_checkbox,
+    show_mean_checkbox,
+    show_raw_checkbox,
+    show_std_sem_checkbox,
+    std_sem_select,
+    swarm_jitter,
+    swarm_offset,
+    use_remove_values_checkbox,
     xcol_select,
     ycol_select,
+    ystat_select,
 ):
-    # Gate plot generation behind Plot button
     mo.stop(not plot_btn.value, mo.md("Click **Plot** to generate the figure."))
 
-    # Build PlotState from widget values
     roi_val = pre_filter_roi.value
-    pre_filter = {col: roi_val if col == "roi_id" else PRE_FILTER_NONE for col in pre_filter_columns}
+    pre_filter = {
+        col: str(roi_val) if roi_val is not None else PRE_FILTER_NONE
+        for col in pre_filter_columns
+    }
 
     xcol = xcol_select.value or ""
     ycol = ycol_select.value or ""
-    group_col = groups_color.value if groups_color.value != "(none)" else None
-    color_grouping = groups_nesting.value if groups_nesting.value != "(none)" else None
+    gv = str(groups_color.value) if groups_color.value else "(none)"
+    group_col = None if gv == "(none)" else gv
+    cgv = str(groups_nesting.value) if groups_nesting.value else "(none)"
+    color_grouping = None if cgv == "(none)" else cgv
 
     try:
         pt_val = str(plot_type_select.value)
         plot_type = PlotType(pt_val) if pt_val in [p.value for p in PlotType] else PlotType.SCATTER
     except (ValueError, TypeError):
         plot_type = PlotType.SCATTER
+
+    _rvt = remove_values_threshold.value
 
     state = PlotState(
         pre_filter=pre_filter,
@@ -251,10 +326,22 @@ def _(
         plot_type=plot_type,
         group_col=group_col,
         color_grouping=color_grouping,
-        use_absolute_value=abs_value_checkbox.value,
+        ystat=str(ystat_select.value or "mean"),
+        use_absolute_value=bool(abs_value_checkbox.value),
+        swarm_jitter_amount=float(swarm_jitter.value or 0.35),
+        swarm_group_offset=float(swarm_offset.value or 0.3),
+        use_remove_values=bool(use_remove_values_checkbox.value),
+        remove_values_threshold=float(_rvt) if _rvt is not None else None,
+        show_mean=bool(show_mean_checkbox.value),
+        show_std_sem=bool(show_std_sem_checkbox.value),
+        std_sem_type=str(std_sem_select.value or "std"),
+        mean_line_width=int(mean_line_width.value or 2),
+        error_line_width=int(error_line_width.value or 2),
+        show_raw=bool(show_raw_checkbox.value),
+        point_size=int(point_size.value or 6),
+        show_legend=bool(show_legend_checkbox.value),
     )
 
-    # Filter data and generate figure
     df_f = data_processor.filter_by_pre_filters(state.pre_filter)
     fig_dict = figure_generator.make_figure(df_f, state)
     fig = go.Figure(fig_dict)
