@@ -88,6 +88,18 @@ python examples/sample_roi_image_widget.py
 
 ---
 
+## Plot Pool App
+
+The plot pool app is a standalone NiceGUI application for exploring CSV data with linked Plotly visualizations.
+
+```bash
+uv run python -m nicewidgets.plot_pool_app.plot_pool_app
+```
+
+See `src/nicewidgets/plot_pool_app/` for the full app and demo scripts.
+
+---
+
 ## Running Tests
 
 Tests use `pytest` and are located in the `tests/` directory.
@@ -125,6 +137,8 @@ nicewidgets/
 ├── src/nicewidgets/           # Source code
 │   ├── custom_ag_grid/        # AG Grid wrapper
 │   ├── roi_image_widget/      # ROI image viewer
+│   ├── plot_pool_widget/      # Plot pool controller and table view
+│   ├── plot_pool_app/         # Plot pool demo apps (demo_pool_app, demo_df_table_app)
 │   └── utils/                 # Logging and utilities
 ├── tests/                     # Unit tests
 ├── examples/                  # Example scripts

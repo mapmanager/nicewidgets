@@ -8,6 +8,7 @@ when expansion is opened). See PlotPoolController class docstring for public API
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -33,6 +34,48 @@ from nicewidgets.plot_pool_widget.pre_filter_conventions import (
 logger = get_logger(__name__)
 
 
+@dataclass
+class PlotPoolConfig:
+    """Configuration for PlotPoolController. Create and pass to PlotPoolController(df, config=cfg).
+
+    Attributes:
+        pre_filter_columns: Column names used for pre-filter dropdowns (one dropdown per column).
+            Each column's unique values are shown as options; selection filters the data before plotting.
+            Default is ["roi_id"]. Pass a list of categorical column names, e.g. ["roi_id"] or ["condition", "batch"].
+        unique_row_id_col: Column name that uniquely identifies each row (e.g. "path", "id").
+            Used for table selection, plot click-to-row mapping, and select_points_by_row_id().
+        db_type: Identifies which data (and thus which DataFrame columns) this controller uses.
+            Used only to choose the config file so saved column names (xcol, ycol, group_col, etc.)
+            stay valid for that type. Default "default" uses pool_plot_config.json; any other value
+            uses pool_plot_config_{db_type}.json (e.g. "radon_db" -> pool_plot_config_radon_db.json).
+            Recommended: alphanumeric and underscore only (e.g. radon_db, velocity_event_db).
+            No filesystem sanitization is applied; invalid characters are not yet handled.
+        app_name: Optional application name for config directory (e.g. "kymflow").
+            Passed through to config load/save so non-kymflow apps can use their own config directory.
+            When None, "kymflow" is used so existing behavior is unchanged.
+        config_path: Optional full path to config file. When set, load/save use this path and
+            ignore db_type/app_name. Used mainly for tests to avoid touching user config.
+        plot_state: Optional initial PlotState. If None, defaults are used (first pre-filter value, first numeric x/y).
+        on_table_row_selected: Optional callback invoked when the user selects a row in the data table.
+            Signature: (row_id: str, row_dict: dict[str, Any]) -> None.
+            - row_id: The value in the selected row for unique_row_id_col (as string).
+            - row_dict: The full row as a dict (column name -> value).
+            The controller also clears plot selection and highlights the corresponding point(s) in the plots.
+        on_refresh_requested: Optional callback invoked when the user clicks the Refresh button.
+            Signature: () -> pd.DataFrame. Should load fresh data and return a DataFrame with
+            unique_row_id_col, pre_filter_columns, and numeric columns. If set, a Refresh button
+            is shown in the header; on click, the callback is called and update_df() is invoked.
+    """
+    pre_filter_columns: Optional[list[str]] = None
+    unique_row_id_col: str = "path"
+    db_type: str = "default"
+    app_name: Optional[str] = None
+    config_path: Optional[Path] = None
+    plot_state: Optional[PlotState] = None
+    on_table_row_selected: Optional[Callable[[str, dict[str, Any]], None]] = None
+    on_refresh_requested: Optional[Callable[[], pd.DataFrame]] = None
+
+
 class PlotPoolController:
     """Controller for interactive pool plotting with NiceGUI.
 
@@ -52,67 +95,38 @@ class PlotPoolController:
         self,
         df: pd.DataFrame,
         *,
-        pre_filter_columns: Optional[list[str]] = None,
-        unique_row_id_col: str = "path",
-        db_type: str = "default",
-        app_name: Optional[str] = None,
-        config_path: Optional[Path] = None,
-        plot_state: Optional[PlotState] = None,
-        on_table_row_selected: Optional[Callable[[str, dict[str, Any]], None]] = None,
-        on_refresh_requested: Optional[Callable[[], pd.DataFrame]] = None,
+        config: Optional[PlotPoolConfig] = None,
     ) -> None:
-        """Initialize plot controller with dataframe and column configuration.
+        """Initialize plot controller with dataframe and optional configuration.
 
         Args:
             df: DataFrame containing plot data. Must have numeric columns for x/y,
                 and columns for pre_filter_columns and unique_row_id_col.
-            pre_filter_columns: Column names used for pre-filter dropdowns (one dropdown per column).
-                Each column's unique values are shown as options; selection filters the data before plotting.
-                Default is ["roi_id"]. Pass a list of categorical column names, e.g. ["roi_id"] or ["condition", "batch"].
-            unique_row_id_col: Column name that uniquely identifies each row (e.g. "path", "id").
-                Used for table selection, plot click-to-row mapping, and select_points_by_row_id().
-            db_type: Identifies which data (and thus which DataFrame columns) this controller uses.
-                Used only to choose the config file so saved column names (xcol, ycol, group_col, etc.)
-                stay valid for that type. Default "default" uses pool_plot_config.json; any other value
-                uses pool_plot_config_{db_type}.json (e.g. "radon_db" -> pool_plot_config_radon_db.json).
-                Recommended: alphanumeric and underscore only (e.g. radon_db, velocity_event_db).
-                No filesystem sanitization is applied; invalid characters are not yet handled.
-            app_name: Optional application name for config directory (e.g. "kymflow").
-                Passed through to config load/save so non-kymflow apps can use their own config directory.
-                When None, "kymflow" is used so existing behavior is unchanged.
-            config_path: Optional full path to config file. When set, load/save use this path and
-                ignore db_type/app_name. Used mainly for tests to avoid touching user config.
-            plot_state: Optional initial PlotState. If None, defaults are used (first pre-filter value, first numeric x/y).
-            on_table_row_selected: Optional callback invoked when the user selects a row in the data table.
-                Signature: (row_id: str, row_dict: dict[str, Any]) -> None.
-                - row_id: The value in the selected row for unique_row_id_col (as string).
-                - row_dict: The full row as a dict (column name -> value).
-                The controller also clears plot selection and highlights the corresponding point(s) in the plots.
-            on_refresh_requested: Optional callback invoked when the user clicks the Refresh button.
-                Signature: () -> pd.DataFrame. Should load fresh data and return a DataFrame with
-                unique_row_id_col, pre_filter_columns, and numeric columns. If set, a Refresh button
-                is shown in the header; on click, the callback is called and update_df() is invoked.
+            config: Optional PlotPoolConfig. When None, uses default PlotPoolConfig() with
+                pre_filter_columns=["roi_id"], unique_row_id_col="path", db_type="default", etc.
+                Callers should create a PlotPoolConfig with desired settings and pass it.
         """
+        cfg = config if config is not None else PlotPoolConfig()
         self.df = df
-        self.pre_filter_columns = pre_filter_columns if pre_filter_columns is not None else ["roi_id"]
-        self.unique_row_id_col = unique_row_id_col
-        self.db_type = db_type
-        self._app_name = app_name
-        self._config_path = config_path
-        self._on_table_row_selected = on_table_row_selected
-        self._on_refresh_requested = on_refresh_requested
+        self.pre_filter_columns = cfg.pre_filter_columns if cfg.pre_filter_columns is not None else ["roi_id"]
+        self.unique_row_id_col = cfg.unique_row_id_col
+        self.db_type = cfg.db_type
+        self._app_name = cfg.app_name
+        self._config_path = cfg.config_path
+        self._on_table_row_selected = cfg.on_table_row_selected
+        self._on_refresh_requested = cfg.on_refresh_requested
 
         # Initialize DataFrameProcessor for data operations
         self.data_processor = DataFrameProcessor(
             df,
             pre_filter_columns=self.pre_filter_columns,
-            unique_row_id_col=unique_row_id_col,
+            unique_row_id_col=self.unique_row_id_col,
         )
 
         # Initialize FigureGenerator for plot generation
         self.figure_generator = FigureGenerator(
             self.data_processor,
-            unique_row_id_col=unique_row_id_col,
+            unique_row_id_col=self.unique_row_id_col,
         )
 
         # reasonable defaults
@@ -131,14 +145,14 @@ class PlotPoolController:
                 initial_pre_filter[self.pre_filter_columns[0]] = first_vals[0]
 
         # Initialize with 2 plot states (extensible to 4)
-        if plot_state is None:
+        if cfg.plot_state is None:
             default_state = PlotState(
                 pre_filter=initial_pre_filter,
                 xcol=x_default,
                 ycol=y_default,
             )
         else:
-            default_state = plot_state
+            default_state = cfg.plot_state
         
         # Store default plot state for reset functionality
         self.default_plot_state: PlotState = PlotState.from_dict(default_state.to_dict())
@@ -483,7 +497,8 @@ class PlotPoolController:
             LazySection instance. The section renders the plot controller UI on first open.
 
         Example:
-            >>> ctrl = PlotPoolController(df, pre_filter_columns=["roi_id"])
+            >>> cfg = PlotPoolConfig(pre_filter_columns=["roi_id"])
+            >>> ctrl = PlotPoolController(df, config=cfg)
             >>> section = ctrl.build_lazy("Pool Plot", subtitle="Click to load")
         """
         if config is None:

@@ -9,7 +9,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from nicewidgets.plot_pool_widget.plot_pool_controller import PlotPoolController
+from nicewidgets.plot_pool_widget.plot_pool_controller import PlotPoolConfig, PlotPoolController
 from nicewidgets.plot_pool_widget.plot_state import PlotState, PlotType
 from nicewidgets.plot_pool_widget.pre_filter_conventions import PRE_FILTER_NONE
 
@@ -35,13 +35,13 @@ def sample_dataframe():
 @pytest.fixture
 def plot_controller(sample_dataframe, tmp_path):
     """Create a PlotPoolController instance for testing. Uses a temp config path to avoid touching user config."""
-    return PlotPoolController(
-        sample_dataframe,
+    cfg = PlotPoolConfig(
         pre_filter_columns=["roi_id"],
         unique_row_id_col="path",
         db_type="test",
         config_path=tmp_path / "pool_plot_config_test.json",
     )
+    return PlotPoolController(sample_dataframe, config=cfg)
 
 
 def test_scatter_plot_basic(plot_controller, sample_dataframe):
@@ -269,37 +269,37 @@ def test_plot_with_mean_std(plot_controller, sample_dataframe):
 
 def test_config_filename_default(sample_dataframe, tmp_path):
     """_config_filename returns pool_plot_config.json when db_type is 'default'."""
-    ctrl = PlotPoolController(
-        sample_dataframe,
+    cfg = PlotPoolConfig(
         pre_filter_columns=["roi_id"],
         unique_row_id_col="path",
         db_type="default",
         config_path=tmp_path / "pool_plot_config.json",
     )
+    ctrl = PlotPoolController(sample_dataframe, config=cfg)
     assert ctrl._config_filename() == "pool_plot_config.json"
 
 
 def test_config_filename_custom(sample_dataframe, tmp_path):
     """_config_filename returns pool_plot_config_{db_type}.json for non-default db_type."""
-    ctrl = PlotPoolController(
-        sample_dataframe,
+    cfg = PlotPoolConfig(
         pre_filter_columns=["roi_id"],
         unique_row_id_col="path",
         db_type="radon_db",
         config_path=tmp_path / "pool_plot_config_radon_db.json",
     )
+    ctrl = PlotPoolController(sample_dataframe, config=cfg)
     assert ctrl._config_filename() == "pool_plot_config_radon_db.json"
 
 
 def test_validate_plot_state_columns_fallback(sample_dataframe, tmp_path):
     """Loaded state with missing xcol/ycol gets fallback to first numeric columns."""
-    ctrl = PlotPoolController(
-        sample_dataframe,
+    cfg = PlotPoolConfig(
         pre_filter_columns=["roi_id"],
         unique_row_id_col="path",
         db_type="test",
         config_path=tmp_path / "pool_plot_config_test.json",
     )
+    ctrl = PlotPoolController(sample_dataframe, config=cfg)
     # sample_dataframe has numeric columns like img_mean, vel_mean, other_numeric
     state = PlotState(
         pre_filter={"roi_id": PRE_FILTER_NONE},
@@ -316,13 +316,13 @@ def test_validate_plot_state_columns_fallback(sample_dataframe, tmp_path):
 
 def test_validate_plot_state_columns_pre_filter_removed(sample_dataframe, tmp_path):
     """Loaded state with pre_filter key not in df has that key removed."""
-    ctrl = PlotPoolController(
-        sample_dataframe,
+    cfg = PlotPoolConfig(
         pre_filter_columns=["roi_id"],
         unique_row_id_col="path",
         db_type="test",
         config_path=tmp_path / "pool_plot_config_test.json",
     )
+    ctrl = PlotPoolController(sample_dataframe, config=cfg)
     state = PlotState(
         pre_filter={"roi_id": 1, "not_a_column": "x"},
         xcol="img_mean",
