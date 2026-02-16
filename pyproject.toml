@@ -47,6 +47,7 @@ dependencies = [
     "plotly>=5.0.0",
     # "matplotlib>=3.7.0",
     "platformdirs",
+    "pyperclip>=1.8.0",
 ]
 
 [project.optional-dependencies]

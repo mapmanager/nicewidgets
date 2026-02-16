@@ -16,8 +16,10 @@ import pandas as pd
 from nicegui import ui
 from nicegui.events import GenericEventArguments
 
+from nicewidgets.utils.clipboard import copy_to_clipboard
 from nicewidgets.utils.logging import get_logger
 from nicewidgets.plot_pool_widget.plot_state import PlotType, PlotState
+from nicewidgets.plot_pool_widget.algorithms.swarm_stats import swarm_report_from_state
 from nicewidgets.plot_pool_widget.plot_helpers import numeric_columns, is_categorical_column
 from nicewidgets.plot_pool_widget.dataframe_processor import DataFrameProcessor
 from nicewidgets.plot_pool_widget.figure_generator import FigureGenerator
@@ -570,6 +572,11 @@ class PlotPoolController:
                     plot.on("plotly_click", lambda e, idx=0: self._on_plotly_click(e, plot_index=idx))
                     if is_selection_compatible(self.plot_states[0].plot_type):
                         plot.on("plotly_relayout", lambda e, idx=0: self._on_plotly_relayout(e, plot_index=idx))
+                    with ui.context_menu():
+                        ui.menu_item(
+                            "Copy data report",
+                            on_click=lambda: self._copy_report_for_plot(0),
+                        )
                     self._plots.append(plot)
         
         elif rows == 1 and cols == 2:
@@ -584,6 +591,11 @@ class PlotPoolController:
                             plot.on("plotly_click", lambda e, idx=i: self._on_plotly_click(e, plot_index=idx))
                             if is_selection_compatible(self.plot_states[i].plot_type):
                                 plot.on("plotly_relayout", lambda e, idx=i: self._on_plotly_relayout(e, plot_index=idx))
+                            with ui.context_menu():
+                                ui.menu_item(
+                                    "Copy data report",
+                                    on_click=lambda idx=i: self._copy_report_for_plot(idx),
+                                )
                             self._plots.append(plot)
         
         elif rows == 2 and cols == 1:
@@ -598,6 +610,11 @@ class PlotPoolController:
                             plot.on("plotly_click", lambda e, idx=i: self._on_plotly_click(e, plot_index=idx))
                             if is_selection_compatible(self.plot_states[i].plot_type):
                                 plot.on("plotly_relayout", lambda e, idx=i: self._on_plotly_relayout(e, plot_index=idx))
+                            with ui.context_menu():
+                                ui.menu_item(
+                                    "Copy data report",
+                                    on_click=lambda idx=i: self._copy_report_for_plot(idx),
+                                )
                             self._plots.append(plot)
         
         elif rows == 2 and cols == 2:
@@ -615,6 +632,11 @@ class PlotPoolController:
                                     plot.on("plotly_click", lambda e, idx=plot_idx: self._on_plotly_click(e, plot_index=idx))
                                     if is_selection_compatible(self.plot_states[plot_idx].plot_type):
                                         plot.on("plotly_relayout", lambda e, idx=plot_idx: self._on_plotly_relayout(e, plot_index=idx))
+                                    with ui.context_menu():
+                                        ui.menu_item(
+                                            "Copy data report",
+                                            on_click=lambda idx=plot_idx: self._copy_report_for_plot(idx),
+                                        )
                                     self._plots.append(plot)
         
         # Initialize last plot type tracking after plots are created
@@ -624,6 +646,24 @@ class PlotPoolController:
     # ----------------------------
     # Events
     # ----------------------------
+
+    def _copy_report_for_plot(self, plot_index: int) -> None:
+        """Generate swarm report for the given plot and copy to clipboard."""
+        if plot_index < 0 or plot_index >= len(self.plot_states):
+            ui.notify(f"Invalid plot index {plot_index}", type="warning")
+            return
+        try:
+            report = swarm_report_from_state(
+                self.df,
+                self.plot_states[plot_index],
+                unique_row_id_col=self.unique_row_id_col,
+                pre_filter_columns=self.pre_filter_columns,
+            )
+            copy_to_clipboard(report)
+            ui.notify("Data report copied to clipboard", type="positive")
+        except Exception as ex:
+            logger.exception("Failed to copy data report")
+            ui.notify(f"Could not generate report: {ex}", type="negative")
 
     def _on_splitter_change(self, e=None) -> None:
         """Restore plot panel after splitter resize (avoids 1x2/2x1 collapsing to single plot). Persist splitter value."""
