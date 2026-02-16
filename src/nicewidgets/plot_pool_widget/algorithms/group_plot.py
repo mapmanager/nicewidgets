@@ -361,7 +361,7 @@ if __name__ == "__main__":
     _example_from_csv(
         str(_csv),
         pre_filter_columns=["roi_id"],
-        unique_row_id_col="kym_event_id",
+        unique_row_id_col="_unique_row_id",
         pre_filter={"roi_id": PRE_FILTER_NONE},  # no filter = use all rows
         group_col="event_type",
         ycol="score_peak",

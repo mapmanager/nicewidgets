@@ -67,14 +67,14 @@ def test_load_csv_for_file_radon_adds_unique_row_id():
     assert "|" in str(sample)
 
 
-def test_load_csv_for_file_kym_event_keeps_kym_event_id():
-    """load_csv_for_file does not add unique_row_id for kym_event_report (has kym_event_id)."""
+def test_load_csv_for_file_kym_event_keeps_unique_row_id():
+    """load_csv_for_file does not add unique_row_id for kym_event_report (has _unique_row_id)."""
     data_dir = get_data_dir()
     if not (data_dir / "kym_event_report.csv").exists():
         pytest.skip("kym_event_report.csv not found")
     df = load_csv_for_file("kym_event_report.csv")
-    assert "kym_event_id" in df.columns
-    # Should NOT add unique_row_id (kym_event_id is already the unique id)
+    assert "_unique_row_id" in df.columns
+    # Should NOT add unique_row_id (_unique_row_id is already the unique id)
     assert "unique_row_id" not in df.columns
 
 
@@ -97,7 +97,7 @@ def test_get_config_for_csv_kym_event():
     """get_config_for_csv returns correct config for kym_event_report.csv."""
     cfg = get_config_for_csv("kym_event_report.csv")
     assert cfg.pre_filter_columns == ["roi_id"]
-    assert cfg.unique_row_id_col == "kym_event_id"
+    assert cfg.unique_row_id_col == "_unique_row_id"
     assert cfg.db_type == "kym_event_db"
     assert cfg.app_name == "nicewidgets"
 

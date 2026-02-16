@@ -40,16 +40,19 @@ def load_csv_for_file(filename: str) -> pd.DataFrame:
     """Load CSV from nicewidgets/data/ and apply schema prep.
 
     For radon_report_db.csv: adds unique_row_id (path|roi_id) if not present.
-    For kym_event_report.csv: kym_event_id already exists.
+    For kym_event_report.csv: _unique_row_id already exists (or kym_event_id for backward compatibility).
     """
     data_dir = get_data_dir()
     path = data_dir / filename
     if not path.exists():
         raise FileNotFoundError(f"CSV not found: {path}")
     df = pd.read_csv(path)
+    # Backward compatibility: rename kym_event_id to _unique_row_id if present
+    if "kym_event_id" in df.columns and "_unique_row_id" not in df.columns:
+        df = df.rename(columns={"kym_event_id": "_unique_row_id"})
     # Radon schema: add unique_row_id if path and roi_id exist, row_id/unique_row_id don't
     if "unique_row_id" not in df.columns and "row_id" not in df.columns:
-        if "kym_event_id" not in df.columns and "path" in df.columns and "roi_id" in df.columns:
+        if "_unique_row_id" not in df.columns and "path" in df.columns and "roi_id" in df.columns:
             df["unique_row_id"] = df["path"].astype(str) + "|" + df["roi_id"].astype(str)
     return df
 
@@ -77,7 +80,7 @@ _CSV_SCHEMA: dict[str, PlotPoolConfig] = {
     ),
     "kym_event_report.csv": PlotPoolConfig(
         pre_filter_columns=["roi_id"],
-        unique_row_id_col="kym_event_id",
+            unique_row_id_col="_unique_row_id",
         db_type="kym_event_db",
         app_name="nicewidgets",
     ),

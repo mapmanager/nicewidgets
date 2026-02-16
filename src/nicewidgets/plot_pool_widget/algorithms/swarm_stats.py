@@ -461,7 +461,7 @@ if __name__ == "__main__":
     )
     df = pd.read_csv(str(_csv))
     report = swarm_report_from_state(
-        df, state, unique_row_id_col="kym_event_id"
+        df, state, unique_row_id_col="_unique_row_id"
     )
     print("=" * 60)
     print("Swarm stats example (group_col only)")
