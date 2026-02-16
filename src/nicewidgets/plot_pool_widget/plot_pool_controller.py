@@ -958,44 +958,54 @@ class PlotPoolController:
             return
 
         p0: dict[str, Any] = points[0]
-        custom = p0.get("customdata")
-        state = self.plot_states[plot_index]
 
+        # from pprint import pprint
+        # logger.info("p0 is:")
+        # pprint(p0, sort_dicts=False, indent=4)
+
+        custom_data = p0.get("customdata")
+        plot_state = self.plot_states[plot_index]
+        plot_state_dict = plot_state.to_dict()
         # per-row plots: click -> row_id -> filtered df row
-        if state.plot_type in {PlotType.SCATTER, PlotType.SWARM}:
+        if plot_state.plot_type in {PlotType.SCATTER, PlotType.SWARM}:
             row_id: Optional[str] = None
-            if isinstance(custom, (str, int, float)):
-                row_id = str(custom)
-            elif isinstance(custom, (list, tuple)) and custom:
-                row_id = str(custom[0])
+            if isinstance(custom_data, (str, int, float)):
+                row_id = str(custom_data)
+            elif isinstance(custom_data, (list, tuple)) and custom_data:
+                if plot_state.plot_type == PlotType.SWARM:
+                    row_id = str(custom_data[1])
+                else:
+                    row_id = str(custom_data[0])
 
             if not row_id:
-                logger.warning(f"Could not extract row_id from plotly click: custom={custom}")
+                logger.warning(f"Could not extract row_id from plotly click: custom_data={custom_data}")
                 return
 
             # logger.info(f"Plotly click on plot {plot_index + 1}: plot_type={state.plot_type.value}, row_id={row_id}")
 
-            df_f = self._get_filtered_df(state)
+            df_f = self._get_filtered_df(plot_state)
             idx = self._id_to_index_filtered.get(row_id)
             if idx is None:
-                logger.warning(f"Row ID {row_id} not found in filtered index")
+                # like '/Users/cudmore/Dropbox/data/declan/2026/compare-condiitons/v2-analysis/14d Saline/20251020/20251020_A100_0013.tif|1': 0
+                logger.warning(f"Row ID '{row_id}' not found in filtered index")
+                # print(self._id_to_index_filtered)
                 return
 
             row = df_f.iloc[idx]
             if self._clicked_label:
-                self._clicked_label.text = f"Plot {plot_index + 1}: {format_pre_filter_display(state.pre_filter)} \n {self.unique_row_id_col}={row_id} \n (filtered iloc={idx})"
+                self._clicked_label.text = f"Plot {plot_index + 1}: {format_pre_filter_display(plot_state.pre_filter)} \n {self.unique_row_id_col}={row_id} \n (filtered iloc={idx})"
             row_dict = row.to_dict()
             if self._on_table_row_selected:
                 self._on_table_row_selected(row_id, row_dict)
             return
 
         # grouped aggregation plot: click -> group summary
-        if state.plot_type == PlotType.GROUPED:
+        if plot_state.plot_type == PlotType.GROUPED:
             x = p0.get("x")
             y = p0.get("y")
             logger.info(f"Plotly click on plot {plot_index + 1} grouped plot: group={x}, y={y}")
             if self._clicked_label:
-                self._clicked_label.text = f"Plot {plot_index + 1}: {format_pre_filter_display(state.pre_filter)} clicked group={x}, y={y} (aggregated)"
+                self._clicked_label.text = f"Plot {plot_index + 1}: {format_pre_filter_display(plot_state_dict.pre_filter)} clicked group={x}, y={y} (aggregated)"
             return
 
     # ----------------------------

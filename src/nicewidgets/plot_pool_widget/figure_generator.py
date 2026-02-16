@@ -6,6 +6,7 @@ from data and plot state, separating figure generation logic from UI/controller 
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -266,7 +267,8 @@ class FigureGenerator:
                     name=f"{group_value} (y-mean)",
                     line=dict(color="gray", width=state.mean_line_width),
                     showlegend=False,  # Hide mean/std/sem traces from legend
-                    hovertemplate=f"Y Mean: {mean_val:.3f}<extra></extra>",
+                    # hovertemplate=f"Y Mean: {mean_val:.3f}<extra></extra>",
+                    hoverinfo="none"   # or "skip"
                 ))
             
             # Add vertical line for y-std/sem (hide from legend)
@@ -283,11 +285,12 @@ class FigureGenerator:
                     name=f"{group_value} (y-{state.std_sem_type})",
                     line=dict(color="red", width=state.error_line_width),
                     showlegend=False,  # Hide mean/std/sem traces from legend
-                    hovertemplate=(
-                        f"Y Mean: {mean_val:.3f}<br>"
-                        f"Y {state.std_sem_type.upper()}: ±{error_val:.3f}<br>"
-                        f"Y Range: [{y_min:.3f}, {y_max:.3f}]<extra></extra>"
-                    ),
+                    # hovertemplate=(
+                    #     f"Y Mean: {mean_val:.3f}<br>"
+                    #     f"Y {state.std_sem_type.upper()}: ±{error_val:.3f}<br>"
+                    #     f"Y Range: [{y_min:.3f}, {y_max:.3f}]<extra></extra>"
+                    # ),
+                    hoverinfo="none"   # or "skip"
                 ))
             
             # Add x-axis mean and std/sem for scatter (hide from legend)
@@ -315,7 +318,8 @@ class FigureGenerator:
                         name=f"{group_value} (x-mean)",
                         line=dict(color="blue", width=state.mean_line_width),
                         showlegend=False,  # Hide mean/std/sem traces from legend
-                        hovertemplate=f"X Mean: {x_mean_val:.3f}<extra></extra>",
+                        # hovertemplate=f"X Mean: {x_mean_val:.3f}<extra></extra>",
+                        hoverinfo="none"   # or "skip"
                     ))
                 
                 # Add horizontal line for x-std/sem
@@ -331,11 +335,12 @@ class FigureGenerator:
                         name=f"{group_value} (x-{state.std_sem_type})",
                         line=dict(color="orange", width=state.error_line_width),
                         showlegend=False,  # Hide mean/std/sem traces from legend
-                        hovertemplate=(
-                            f"X Mean: {x_mean_val:.3f}<br>"
-                            f"X {state.std_sem_type.upper()}: ±{x_error_val:.3f}<br>"
-                            f"X Range: [{x_min_error:.3f}, {x_max_error:.3f}]<extra></extra>"
-                        ),
+                        # hovertemplate=(
+                        #     f"X Mean: {x_mean_val:.3f}<br>"
+                        #     f"X {state.std_sem_type.upper()}: ±{x_error_val:.3f}<br>"
+                        #     f"X Range: [{x_min_error:.3f}, {x_max_error:.3f}]<extra></extra>"
+                        # ),
+                        hoverinfo="none"   # or "skip"
                     ))
 
     def _figure_scatter(
@@ -362,6 +367,17 @@ class FigureGenerator:
         )
         row_ids = df_f[self.unique_row_id_col].astype(str)
 
+        # File stem for hover (from path or file_name in df_f)
+        if "path" in df_f.columns:
+            file_stem = df_f["path"].map(
+                lambda p: Path(p).stem if p and pd.notna(p) else ""
+            ).values
+        elif "file_name" in df_f.columns:
+            file_stem = df_f["file_name"].fillna("").astype(str).values
+        else:
+            file_stem = np.array([""] * len(df_f))
+        customdata = np.column_stack([row_ids, file_stem])
+
         selectedpoints = None
         selected = None
         if selected_row_ids:
@@ -377,14 +393,14 @@ class FigureGenerator:
             y=y,
             mode="markers",
             name=format_pre_filter_display(state.pre_filter),
-            customdata=row_ids,
+            customdata=customdata,
             marker=dict(size=state.point_size),
             selectedpoints=selectedpoints,
             selected=selected,
             hovertemplate=(
-                f"{state.xcol}=%{{x}}<br>"
-                f"{state.ycol}=%{{y}}<br>"
-                # f"{self.row_id_col}=%{{customdata}}<extra></extra>"
+                f"file=%{{customdata[1]}}<br>"
+                # f"{state.xcol}=%{{x}}<br>"
+                # f"{state.ycol}=%{{y}}<br>"
             ),
         ))
         fig.update_layout(
@@ -436,8 +452,16 @@ class FigureGenerator:
         if state.color_grouping and state.color_grouping in df_f.columns:
             symbol_values = df_f[state.color_grouping].astype(str)
 
-        # Create dataframe with all needed columns
+        # Create dataframe with all needed columns (including file_stem for hover)
         tmp_dict = {"x": x, "y": y, "row_id": row_ids}
+        if "path" in df_f.columns:
+            tmp_dict["file_stem"] = df_f["path"].map(
+                lambda p: Path(p).stem if p and pd.notna(p) else ""
+            )
+        elif "file_name" in df_f.columns:
+            tmp_dict["file_stem"] = df_f["file_name"].fillna("").astype(str)
+        else:
+            tmp_dict["file_stem"] = pd.Series("", index=df_f.index)
         if color_values is not None:
             tmp_dict["color"] = color_values
         if symbol_values is not None:
@@ -510,11 +534,13 @@ class FigureGenerator:
                         symbol_map = {sym: i % len(PLOTLY_SYMBOLS) for i, sym in enumerate(unique_symbols)}
                         sub_marker["symbol"] = [PLOTLY_SYMBOLS[symbol_map[sym]] for sym in sub["symbol"]]
                     
-                    # Prepare customdata: include row_id and symbol value (if present)
+                    # Prepare customdata: row_id, symbol (if present), file_stem
                     if "symbol" in sub.columns:
-                        customdata = np.column_stack([sub["row_id"], sub["symbol"]])
+                        customdata = np.column_stack([
+                            sub["row_id"], sub["symbol"], sub["file_stem"]
+                        ])
                     else:
-                        customdata = sub["row_id"].values
+                        customdata = np.column_stack([sub["row_id"], sub["file_stem"]])
                     
                     sp, sel = None, None
                     if selected_row_ids:
@@ -524,14 +550,18 @@ class FigureGenerator:
                                 marker=dict(size=state.point_size * 1.3, color=SELECTED_POINTS_COLOR),
                             )
                     
-                    # Build hover template
-                    hover_parts = [f"{state.group_col}={color_val}"]
+                    # Build hover template (file first, then group_col, then symbol if present)
                     if "symbol" in sub.columns:
-                        hover_parts.append(f"{state.color_grouping}=%{{customdata[1]}}")
-                    hover_parts.extend([
-                        f"{state.xcol}=%{{x}}",
-                        f"{state.ycol}=%{{y}}"
-                    ])
+                        hover_parts = [
+                            f"file=%{{customdata[2]}}",
+                            f"{state.group_col}={color_val}",
+                            f"{state.color_grouping}=%{{customdata[1]}}",
+                        ]
+                    else:
+                        hover_parts = [
+                            f"file=%{{customdata[1]}}",
+                            f"{state.group_col}={color_val}",
+                        ]
                     hovertemplate = "<br>".join(hover_parts) + "<extra></extra>"
                     
                     fig.add_trace(go.Scatter(
@@ -553,11 +583,13 @@ class FigureGenerator:
                     symbol_map = {sym: i % len(PLOTLY_SYMBOLS) for i, sym in enumerate(unique_symbols)}
                     marker_dict["symbol"] = [PLOTLY_SYMBOLS[symbol_map[sym]] for sym in tmp["symbol"]]
                 
-                # Prepare customdata: include row_id and symbol value (if present)
+                # Prepare customdata: row_id, symbol (if present), file_stem
                 if "symbol" in tmp.columns:
-                    customdata = np.column_stack([tmp["row_id"], tmp["symbol"]])
+                    customdata = np.column_stack([
+                        tmp["row_id"], tmp["symbol"], tmp["file_stem"]
+                    ])
                 else:
-                    customdata = tmp["row_id"].values
+                    customdata = np.column_stack([tmp["row_id"], tmp["file_stem"]])
                 
                 sp, sel = None, None
                 if selected_row_ids:
@@ -567,9 +599,20 @@ class FigureGenerator:
                             marker=dict(size=state.point_size * 1.3, color=SELECTED_POINTS_COLOR),
                         )
                 
-                hover_parts = [f"{state.xcol}=%{{x}}", f"{state.ycol}=%{{y}}"]
+                # Build hover template (file first, then symbol if present, then x, y)
                 if "symbol" in tmp.columns:
-                    hover_parts.insert(0, f"{state.color_grouping}=%{{customdata[1]}}")
+                    hover_parts = [
+                        f"file=%{{customdata[2]}}",
+                        f"{state.color_grouping}=%{{customdata[1]}}",
+                        f"{state.xcol}=%{{x}}",
+                        f"{state.ycol}=%{{y}}",
+                    ]
+                else:
+                    hover_parts = [
+                        f"file=%{{customdata[1]}}",
+                        f"{state.xcol}=%{{x}}",
+                        f"{state.ycol}=%{{y}}",
+                    ]
                 hovertemplate = "<br>".join(hover_parts) + "<extra></extra>"
                 
                 fig.add_trace(go.Scatter(
@@ -660,8 +703,16 @@ class FigureGenerator:
         
         fig = go.Figure()
         
-        # Build tmp dataframe with x, y, row_id, and optionally color_grouping
+        # Build tmp dataframe with x, y, row_id, and optionally color_grouping and file_stem for hover
         tmp_data = {"x": x_cat, "y": y, "row_id": row_ids}
+        if "path" in df_f.columns:
+            tmp_data["file_stem"] = df_f["path"].map(
+                lambda p: Path(p).stem if p and pd.notna(p) else ""
+            )
+        elif "file_name" in df_f.columns:
+            tmp_data["file_stem"] = df_f["file_name"].fillna("").astype(str)
+        else:
+            tmp_data["file_stem"] = pd.Series("", index=df_f.index)
         if state.color_grouping and state.color_grouping in df_f.columns:
             tmp_data["color"] = df_f[state.color_grouping].astype(str)
         tmp = pd.DataFrame(tmp_data).dropna(subset=["x"])
@@ -700,6 +751,7 @@ class FigureGenerator:
                 x_cat_values_list = []
                 y_values_list = []
                 row_id_values_list = []
+                file_stem_values_list = []
                 
                 for x_cat_val in sub["x"].unique():
                     # Get all points for this x category within this color group
@@ -717,11 +769,13 @@ class FigureGenerator:
                     x_cat_values_list.extend([x_cat_val_str] * len(x_pos_subset))
                     y_values_list.extend(sub["y"][mask].values)
                     row_id_values_list.extend(sub["row_id"][mask].values)
+                    file_stem_values_list.extend(sub["file_stem"][mask].values)
                 
                 x_jittered = np.array(x_jittered_list)
                 x_cat_values = np.array(x_cat_values_list)
                 y_values = np.array(y_values_list)
                 row_id_values = np.array(row_id_values_list)
+                file_stem_values = np.array(file_stem_values_list)
                 
                 # Store x range for each (x_category, color_group) combination
                 # Include group offset in the range calculation
@@ -748,13 +802,18 @@ class FigureGenerator:
                         y=y_values,
                         mode="markers",
                         name=str(color_value),
-                        customdata=np.column_stack([x_cat_values, row_id_values]),
+                        customdata=np.column_stack([
+                            x_cat_values,
+                            row_id_values,
+                            file_stem_values,
+                        ]),
                         marker=dict(size=state.point_size),
                         selectedpoints=sp,
                         selected=sel,
                         hovertemplate=(
+                            f"file=%{{customdata[2]}}<br>"
                             f"{state.group_col}=%{{customdata[0]}}<br>"
-                            f"{state.ycol}=%{{y}}<br>"
+                            # f"{state.ycol}=%{{y}}<br>"
                             f"{state.color_grouping}={color_value}<br>"
                         ),
                     ))
@@ -793,6 +852,7 @@ class FigureGenerator:
             x_cat_values_list = []
             y_values_list = []
             row_id_values_list = []
+            file_stem_values_list = []
             
             for x_cat_val in tmp["x"].unique():
                 # Get all points for this x category
@@ -809,11 +869,13 @@ class FigureGenerator:
                 x_cat_values_list.extend([x_cat_val_str] * len(x_pos_subset))
                 y_values_list.extend(tmp["y"][mask].values)
                 row_id_values_list.extend(tmp["row_id"][mask].values)
+                file_stem_values_list.extend(tmp["file_stem"][mask].values)
             
             x_jittered = np.array(x_jittered_list)
             x_cat_values = np.array(x_cat_values_list)
             y_values = np.array(y_values_list)
             row_id_values = np.array(row_id_values_list)
+            file_stem_values = np.array(file_stem_values_list)
             
             # Calculate x ranges for mean/std positioning (per x category)
             x_ranges = {}
@@ -847,13 +909,18 @@ class FigureGenerator:
                     y=y_values,
                     mode="markers",
                     name=format_pre_filter_display(state.pre_filter),
-                    customdata=np.column_stack([x_cat_values, row_id_values]),
+                    customdata=np.column_stack([
+                        x_cat_values,
+                        row_id_values,
+                        file_stem_values,
+                    ]),
                     marker=dict(size=state.point_size),
                     selectedpoints=sp,
                     selected=sel,
                     hovertemplate=(
+                        f"file=%{{customdata[2]}}<br>"
                         f"{state.group_col}=%{{customdata[0]}}<br>"
-                        f"{state.ycol}=%{{y}}<br>"
+                        # f"{state.ycol}=%{{y}}<br>"
                     ),
                 ))
 
@@ -893,6 +960,16 @@ class FigureGenerator:
         )
         tmp = pd.DataFrame({"x": x, "y": y}).dropna(subset=["x", "y"])
 
+        # File stem for hover on outlier points (from path or file_name)
+        if "path" in df_f.columns:
+            tmp["file_stem"] = df_f.loc[tmp.index, "path"].map(
+                lambda p: Path(p).stem if p and pd.notna(p) else ""
+            )
+        elif "file_name" in df_f.columns:
+            tmp["file_stem"] = df_f.loc[tmp.index, "file_name"].fillna("").astype(str)
+        else:
+            tmp["file_stem"] = ""
+
         fig = go.Figure()
         # Use Plotly's offsetgroup for nested grouping to prevent overlapping
         if state.color_grouping and state.color_grouping in df_f.columns:
@@ -902,6 +979,16 @@ class FigureGenerator:
             tmp = tmp.dropna(subset=["color"])
             # Use alignmentgroup and offsetgroup to separate boxes by color within each x category
             for color_val, sub in tmp.groupby("color", sort=True):
+                customdata = np.column_stack([
+                    sub["file_stem"].values,
+                    sub["x"].values,
+                    sub["color"].values,
+                ])
+                hovertemplate = (
+                    f"file=%{{customdata[0]}}<br>"
+                    f"{state.group_col}=%{{customdata[1]}}<br>"
+                    f"{state.color_grouping}=%{{customdata[2]}}<extra></extra>"
+                )
                 fig.add_trace(go.Box(
                     x=sub["x"],
                     y=sub["y"],
@@ -914,9 +1001,17 @@ class FigureGenerator:
                     marker=dict(size=4),
                     line=dict(width=1.5),
                     showlegend=state.show_legend,
+                    hoveron="points",  # Hover only on outlier/raw points, not box stats (quartiles, etc.)
+                    customdata=customdata,
+                    hovertemplate=hovertemplate,
                 ))
             layout_legend_title = state.color_grouping
         else:
+            customdata = np.column_stack([tmp["file_stem"].values, tmp["x"].values])
+            hovertemplate = (
+                f"file=%{{customdata[0]}}<br>"
+                f"{state.group_col}=%{{customdata[1]}}<extra></extra>"
+            )
             fig.add_trace(go.Box(
                 x=tmp["x"],
                 y=tmp["y"],
@@ -927,6 +1022,9 @@ class FigureGenerator:
                 marker=dict(size=4),
                 line=dict(width=1.5),
                 showlegend=state.show_legend,
+                hoveron="points",  # Hover only on outlier/raw points, not box stats (quartiles, etc.)
+                customdata=customdata,
+                hovertemplate=hovertemplate,
             ))
             layout_legend_title = None
         layout = dict(
@@ -955,6 +1053,16 @@ class FigureGenerator:
         )
         tmp = pd.DataFrame({"x": x, "y": y}).dropna(subset=["x", "y"])
 
+        # File stem for hover on outlier points (from path or file_name)
+        if "path" in df_f.columns:
+            tmp["file_stem"] = df_f.loc[tmp.index, "path"].map(
+                lambda p: Path(p).stem if p and pd.notna(p) else ""
+            )
+        elif "file_name" in df_f.columns:
+            tmp["file_stem"] = df_f.loc[tmp.index, "file_name"].fillna("").astype(str)
+        else:
+            tmp["file_stem"] = ""
+
         fig = go.Figure()
         # Use Plotly's offsetgroup for nested grouping to prevent overlapping
         if state.color_grouping and state.color_grouping in df_f.columns:
@@ -964,6 +1072,16 @@ class FigureGenerator:
             tmp = tmp.dropna(subset=["color"])
             # Use alignmentgroup and offsetgroup to separate violins by color within each x category
             for color_val, sub in tmp.groupby("color", sort=True):
+                customdata = np.column_stack([
+                    sub["file_stem"].values,
+                    sub["x"].values,
+                    sub["color"].values,
+                ])
+                hovertemplate = (
+                    f"file=%{{customdata[0]}}<br>"
+                    f"{state.group_col}=%{{customdata[1]}}<br>"
+                    f"{state.color_grouping}=%{{customdata[2]}}<extra></extra>"
+                )
                 fig.add_trace(go.Violin(
                     x=sub["x"],
                     y=sub["y"],
@@ -972,19 +1090,32 @@ class FigureGenerator:
                     offsetgroup=str(color_val),  # Offset violins by color group for side-by-side display
                     box_visible=True,
                     meanline_visible=True,
+                    points="outliers",  # Show points so hover has something to show for raw data
                     showlegend=state.show_legend,
                     line=dict(width=1.5),
+                    hoveron="points",  # Hover only on points, not violin/kde/mean/quartiles
+                    customdata=customdata,
+                    hovertemplate=hovertemplate,
                 ))
             layout_legend_title = state.color_grouping
         else:
+            customdata = np.column_stack([tmp["file_stem"].values, tmp["x"].values])
+            hovertemplate = (
+                f"file=%{{customdata[0]}}<br>"
+                f"{state.group_col}=%{{customdata[1]}}<extra></extra>"
+            )
             fig.add_trace(go.Violin(
                 x=tmp["x"],
                 y=tmp["y"],
                 name=format_pre_filter_display(state.pre_filter),
                 box_visible=True,
                 meanline_visible=True,
+                points="outliers",  # Show points so hover has something to show for raw data
                 showlegend=state.show_legend,
                 line=dict(width=1.5),
+                hoveron="points",  # Hover only on points, not violin/kde/mean/quartiles
+                customdata=customdata,
+                hovertemplate=hovertemplate,
             ))
             layout_legend_title = None
         layout = dict(
@@ -1059,6 +1190,7 @@ class FigureGenerator:
         """Create cumulative histogram: one curve when group is (none), else one curve per group.
 
         Uses x column (with optional abs); each curve is normalized to 0-1 within its group (or overall if no group).
+        Hover shows file (first in group), group_col, and color_grouping like scatter/swarm/box/violin.
         """
         x = self.data_processor.get_x_values(
             df_f, state.xcol, state.use_absolute_value,
@@ -1067,6 +1199,15 @@ class FigureGenerator:
         if len(x) == 0:
             logger.warning("No valid data for cumulative histogram. Falling back to scatter plot.")
             return self._figure_scatter(df_f, state)
+
+        def _file_stem_for_index(idx):
+            if "path" in df_f.columns:
+                p = df_f.loc[idx, "path"]
+                return Path(p).stem if p and pd.notna(p) else ""
+            if "file_name" in df_f.columns:
+                v = df_f.loc[idx, "file_name"]
+                return "" if pd.isna(v) else str(v)
+            return ""
 
         fig = go.Figure()
         n_bins = 50
@@ -1079,21 +1220,40 @@ class FigureGenerator:
             cumsum_normalized = cumsum / cumsum[-1] if cumsum[-1] > 0 else cumsum
             x_plot = np.concatenate([[bin_edges[0]], bin_edges[1:]])
             y_plot = np.concatenate([[0], cumsum_normalized])
+            first_idx = x.index[0]
+            file_stem = _file_stem_for_index(first_idx)
+            n_pts = len(x_plot)
+            customdata = np.column_stack([
+                np.full(n_pts, file_stem),
+                np.full(n_pts, ""),
+                np.full(n_pts, ""),
+            ])
+            hovertemplate = (
+                f"file=%{{customdata[0]}}<br>"
+                # f"{state.xcol}=%{{x}}<br>Cumulative proportion=%{{y:.3f}}<extra></extra>"
+            )
             fig.add_trace(go.Scatter(
                 x=x_plot,
                 y=y_plot,
                 mode="lines",
                 name=format_pre_filter_display(state.pre_filter),
                 line=dict(shape="hv"),
-                hovertemplate=f"{state.xcol}=%{{x}}<br>Cumulative proportion=%{{y:.3f}}<extra></extra>",
+                customdata=customdata,
+                hovertemplate=hovertemplate,
             ))
             legend_title = None
         else:
             g = df_f.loc[x.index, state.group_col].astype(str)
-            tmp = pd.DataFrame({"x": x, "g": g}).dropna(subset=["g"])
+            tmp_dict = {"x": x, "g": g}
+            if state.color_grouping and state.color_grouping in df_f.columns:
+                tmp_dict["color"] = df_f.loc[x.index, state.color_grouping].astype(str)
+            tmp = pd.DataFrame(tmp_dict).dropna(subset=["g"])
             if len(tmp) == 0:
                 return self._figure_scatter(df_f, state)
-            for group_value, sub in tmp.groupby("g", sort=True):
+            groupby_cols = ["g", "color"] if "color" in tmp.columns else ["g"]
+            for key, sub in tmp.groupby(groupby_cols, sort=True):
+                group_value = key[0] if isinstance(key, tuple) else key
+                color_value = key[1] if isinstance(key, tuple) and len(key) > 1 else ""
                 x_values = sub["x"].values
                 if len(x_values) == 0:
                     continue
@@ -1102,16 +1262,30 @@ class FigureGenerator:
                 cumsum_normalized = cumsum / cumsum[-1] if cumsum[-1] > 0 else cumsum
                 x_plot = np.concatenate([[bin_edges[0]], bin_edges[1:]])
                 y_plot = np.concatenate([[0], cumsum_normalized])
+                first_idx = sub.index[0]
+                file_stem = _file_stem_for_index(first_idx)
+                n_pts = len(x_plot)
+                customdata = np.column_stack([
+                    np.full(n_pts, file_stem),
+                    np.full(n_pts, str(group_value)),
+                    np.full(n_pts, str(color_value)),
+                ])
+                hover_parts = [
+                    f"{state.group_col}=%{{customdata[1]}}<br>",
+                ]
+                if state.color_grouping and "color" in tmp.columns:
+                    hover_parts.append(f"{state.color_grouping}=%{{customdata[2]}}<br>")
+                hover_parts.append("<extra></extra>")
+                hovertemplate = "".join(hover_parts)
+                trace_name = str(group_value) if not color_value else f"{group_value} / {color_value}"
                 fig.add_trace(go.Scatter(
                     x=x_plot,
                     y=y_plot,
                     mode="lines",
-                    name=str(group_value),
+                    name=trace_name,
                     line=dict(shape="hv"),
-                    hovertemplate=(
-                        f"{state.group_col}={group_value}<br>"
-                        f"{state.xcol}=%{{x}}<br>Cumulative proportion=%{{y:.3f}}<extra></extra>"
-                    ),
+                    customdata=customdata,
+                    hovertemplate=hovertemplate,
                 ))
             legend_title = state.group_col
 
