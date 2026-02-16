@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
+
+# Skip this entire module if matplotlib is not installed (optional dependency).
+pytest.importorskip("matplotlib")
+
+import numpy as np
 
 from nicewidgets.roi_image_widget.viewport import (
     Viewport,

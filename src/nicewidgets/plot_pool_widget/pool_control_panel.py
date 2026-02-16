@@ -41,8 +41,10 @@ class PoolControlPanel:
         on_apply_current_to_others: Callable[[], None],
         on_replot_current: Callable[[], None],
         on_reset_to_default: Callable[[], None],
+        on_clear_selection: Optional[Callable[[], None]] = None,
         on_x_column_selected: Callable[[dict[str, Any]], None],
         on_y_column_selected: Callable[[dict[str, Any]], None],
+        show_save_button: bool = False,
     ) -> None:
         self.df = df
         self.layout = layout
@@ -55,8 +57,10 @@ class PoolControlPanel:
         self._on_apply_current_to_others = on_apply_current_to_others
         self._on_replot_current = on_replot_current
         self._on_reset_to_default = on_reset_to_default
+        self._on_clear_selection = on_clear_selection
         self._on_x_column_selected = on_x_column_selected
         self._on_y_column_selected = on_y_column_selected
+        self._show_save_button = show_save_button
 
         # Widget refs (set in build())
         self._layout_select: Optional[ui.select] = None
@@ -103,7 +107,10 @@ class PoolControlPanel:
                     label="Layout",
                     on_change=lambda e: self._on_layout_change(str(e.value)),
                 ).classes("flex-1")
-                ui.button("Save Config", on_click=self._on_save_config).classes("flex-1")
+                if self._on_clear_selection is not None:
+                    ui.button("Clear selection", on_click=self._on_clear_selection).classes("text-sm")
+                if self._show_save_button:
+                    ui.button("Save Config", on_click=self._on_save_config).classes("flex-1")
 
             with ui.row().classes("w-full gap-2 items-center"):
                 ui.label("Edit Plot").classes("text-sm font-semibold")

@@ -65,6 +65,14 @@ class PlotPoolConfig:
             Signature: () -> pd.DataFrame. Should load fresh data and return a DataFrame with
             unique_row_id_col, pre_filter_columns, and numeric columns. If set, a Refresh button
             is shown in the header; on click, the callback is called and update_df() is invoked.
+        show_save_button: When True, show the "Save Config" button in the control panel.
+            When False (default), the button is hidden. Config can still be saved programmatically.
+        show_selection_feedback: When True, show the top toolbar with labels "Click a point to..."
+            and "No selection" / "N points selected". When False (default), that row is hidden.
+            Esc-to-clear selection (ui.keyboard) is always active regardless.
+        show_table_widget: When True, show the data table and the vertical splitter (table on top,
+            controls+plots below). When False (default), the table and that splitter are not shown;
+            only the controls and plots area is displayed.
     """
     pre_filter_columns: Optional[list[str]] = None
     unique_row_id_col: str = "path"
@@ -74,6 +82,9 @@ class PlotPoolConfig:
     plot_state: Optional[PlotState] = None
     on_table_row_selected: Optional[Callable[[str, dict[str, Any]], None]] = None
     on_refresh_requested: Optional[Callable[[], pd.DataFrame]] = None
+    show_save_button: bool = False
+    show_selection_feedback: bool = False
+    show_table_widget: bool = False
 
 
 class PlotPoolController:
@@ -115,6 +126,9 @@ class PlotPoolController:
         self._config_path = cfg.config_path
         self._on_table_row_selected = cfg.on_table_row_selected
         self._on_refresh_requested = cfg.on_refresh_requested
+        self._show_save_button = cfg.show_save_button
+        self._show_selection_feedback = cfg.show_selection_feedback
+        self._show_table_widget = cfg.show_table_widget
 
         # Guard: Check for missing pre_filter columns and filter them out
         missing_columns = [col for col in self.pre_filter_columns if col not in df.columns]
@@ -257,7 +271,7 @@ class PlotPoolController:
             new_df: New DataFrame. Must have unique_row_id_col, pre_filter_columns,
                 and at least one numeric column for y.
         """
-        if self._verticalSplitter is None or self._table_container is None or self._control_panel_container is None:
+        if self._control_panel_container is None:
             return
         if self.unique_row_id_col not in new_df.columns:
             raise ValueError(f"new_df must have column {self.unique_row_id_col!r}")
@@ -287,14 +301,15 @@ class PlotPoolController:
             on_update_label=self._set_selection_label_count,
         )
 
-        self._table_container.clear()
-        self._table_view = DataFrameTableView(
-            new_df,
-            unique_row_id_col=self.unique_row_id_col,
-            on_row_selected=self._handle_table_row_selected,
-        )
-        with self._table_container:
-            self._table_view.build()
+        if self._table_container is not None:
+            self._table_container.clear()
+            self._table_view = DataFrameTableView(
+                new_df,
+                unique_row_id_col=self.unique_row_id_col,
+                on_row_selected=self._handle_table_row_selected,
+            )
+            with self._table_container:
+                self._table_view.build()
 
         pre_filter_options = {
             col: [PRE_FILTER_NONE] + [str(v) for v in self.data_processor.get_pre_filter_values(col)]
@@ -313,8 +328,10 @@ class PlotPoolController:
             on_apply_current_to_others=self._apply_current_to_others,
             on_replot_current=self._replot_current,
             on_reset_to_default=self._reset_to_default,
+            on_clear_selection=self._clear_selection,
             on_x_column_selected=self._on_x_column_selected,
             on_y_column_selected=self._on_y_column_selected,
+            show_save_button=self._show_save_button,
         )
         with self._control_panel_container:
             self._control_panel.build(pre_filter_options=pre_filter_options)
@@ -395,80 +412,83 @@ class PlotPoolController:
             #         if self._on_refresh_requested is not None:
             #             ui.button("Refresh", on_click=self._on_refresh_click).classes("text-sm")
 
-            # Vertical splitter: table view on top, plots/controls below
-            # value=0 minimizes table (maximizes plots) on initial render
-            self._verticalSplitter = ui.splitter(
-                value=0,  # 0% for table (minimized), 100% for plots
-                limits=(0, 100),  # Table can be 0-100% when user drags
-                horizontal=True,  # Vertical split (horizontal=True means horizontal divider)
-            ).classes("w-full h-screen")
-            
-            # TOP: Table view
-            with self._verticalSplitter.before:
-                self._table_container = ui.column().classes("w-full h-full min-h-0")
-                with self._table_container:
-                    self._table_view = DataFrameTableView(
-                        self.df,
-                        unique_row_id_col=self.unique_row_id_col,
-                        on_row_selected=self._handle_table_row_selected,
-                    )
-                    self._table_view.build()
-
-            # BOTTOM: Existing horizontal splitter with controls and plots
-            with self._verticalSplitter.after:
-                with ui.row().classes("w-full items-center gap-3 flex-wrap"):
-                    self._clicked_label = ui.label("Click a point to show the filtered df row...").classes("text-sm text-gray-600")
-                    self._selection_label = ui.label("No selection").classes("text-sm font-medium")
-                    ui.button("Clear selection", on_click=self._clear_selection).classes("text-sm")
-                # Global Esc to clear selection (NiceGUI keyboard element)
+            def _build_controls_and_plots():
+                """Build selection row (optional), keyboard, main splitter, control panel, and plot panel."""
+                if self._show_selection_feedback:
+                    with ui.row().classes("w-full items-center gap-3 flex-wrap"):
+                        self._clicked_label = ui.label("Click a point to show the filtered df row...").classes("text-sm text-gray-600")
+                        self._selection_label = ui.label("No selection").classes("text-sm font-medium")
+                # Global Esc to clear selection (NiceGUI keyboard element) — always active
                 ui.keyboard(on_key=self._on_keyboard_key)
                 # Main splitter: horizontal layout with controls on left, plot on right
-                # on_change: when user resizes splitter, re-build plot panel so 1x2/2x1 layout is not lost
-                # (NiceGUI/Quasar can re-render the 'after' slot and show only one plot; rebuild restores correct count)
                 self._mainSplitter = ui.splitter(
                     value=self._control_panel_splitter_value,
                     limits=(0, 50),
                     on_change=lambda e: self._on_splitter_change(e),
                 ).classes("w-full h-full")
-            
-            # LEFT: Control panel
-            pre_filter_options = {
-                col: [PRE_FILTER_NONE] + [str(v) for v in self.data_processor.get_pre_filter_values(col)]
-                for col in self.pre_filter_columns
-            }
-            with self._mainSplitter.before:
-                self._control_panel_container = ui.column().classes("w-full")
-                with self._control_panel_container:
-                    self._control_panel = PoolControlPanel(
-                        self.df,
-                        layout=self.layout,
-                        current_plot_index=self.current_plot_index,
-                        initial_state=self.plot_states[self.current_plot_index],
-                        on_any_change=self._on_any_change,
-                        on_layout_change=self._on_layout_change,
-                        on_save_config=self._save_config,
-                        on_plot_radio_change=self._on_plot_radio_change,
-                        on_apply_current_to_others=self._apply_current_to_others,
-                        on_replot_current=self._replot_current,
-                        on_reset_to_default=self._reset_to_default,
-                        on_x_column_selected=self._on_x_column_selected,
-                        on_y_column_selected=self._on_y_column_selected,
-                    )
-                    self._control_panel.build(pre_filter_options=pre_filter_options)
+                pre_filter_options = {
+                    col: [PRE_FILTER_NONE] + [str(v) for v in self.data_processor.get_pre_filter_values(col)]
+                    for col in self.pre_filter_columns
+                }
+                with self._mainSplitter.before:
+                    self._control_panel_container = ui.column().classes("w-full")
+                    with self._control_panel_container:
+                        self._control_panel = PoolControlPanel(
+                            self.df,
+                            layout=self.layout,
+                            current_plot_index=self.current_plot_index,
+                            initial_state=self.plot_states[self.current_plot_index],
+                            on_any_change=self._on_any_change,
+                            on_layout_change=self._on_layout_change,
+                            on_save_config=self._save_config,
+                            on_plot_radio_change=self._on_plot_radio_change,
+                            on_apply_current_to_others=self._apply_current_to_others,
+                            on_replot_current=self._replot_current,
+                            on_reset_to_default=self._reset_to_default,
+                            on_clear_selection=self._clear_selection,
+                            on_x_column_selected=self._on_x_column_selected,
+                            on_y_column_selected=self._on_y_column_selected,
+                            show_save_button=self._show_save_button,
+                        )
+                        self._control_panel.build(pre_filter_options=pre_filter_options)
+                with self._mainSplitter.after:
+                    plot_empty_splitter_val = 75.0
+                    with ui.splitter(
+                        value=plot_empty_splitter_val,
+                        limits=(20, 95),
+                        horizontal=True,
+                    ).classes("w-full h-full") as plot_empty_splitter:
+                        with plot_empty_splitter.before:
+                            self._plot_container = ui.column().classes("w-full h-full")
+                        with plot_empty_splitter.after:
+                            ui.column().classes("w-full h-full min-h-0")
+                self._rebuild_plot_panel()
 
-            # RIGHT: Plot panel, then new vertical splitter (plot top, empty bottom) — same orientation as table|plots
-            with self._mainSplitter.after:
-                plot_empty_splitter_val = 75.0  # % for plot, rest empty
-                with ui.splitter(
-                    value=plot_empty_splitter_val,
-                    limits=(20, 95),
-                    horizontal=True,  # same as _verticalSplitter: top/bottom
-                ).classes("w-full h-full") as plot_empty_splitter:
-                    with plot_empty_splitter.before:
-                        self._plot_container = ui.column().classes("w-full h-full")
-                    with plot_empty_splitter.after:
-                        ui.column().classes("w-full h-full min-h-0")  # empty pane below plot
-            self._rebuild_plot_panel()
+            if self._show_table_widget:
+                # Vertical splitter: table on top, controls+plots below
+                self._verticalSplitter = ui.splitter(
+                    value=0,
+                    limits=(0, 100),
+                    horizontal=True,
+                ).classes("w-full h-screen")
+                with self._verticalSplitter.before:
+                    self._table_container = ui.column().classes("w-full h-full min-h-0")
+                    with self._table_container:
+                        self._table_view = DataFrameTableView(
+                            self.df,
+                            unique_row_id_col=self.unique_row_id_col,
+                            on_row_selected=self._handle_table_row_selected,
+                        )
+                        self._table_view.build()
+                with self._verticalSplitter.after:
+                    _build_controls_and_plots()
+            else:
+                # No table: only controls and plots in a full-height column
+                self._verticalSplitter = None
+                self._table_container = None
+                self._table_view = None
+                with ui.column().classes("w-full h-screen"):
+                    _build_controls_and_plots()
 
             self._control_panel.sync_controls(
                 self.plot_states[self.current_plot_index].plot_type,
