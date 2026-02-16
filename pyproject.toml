@@ -67,8 +67,9 @@ examples = [
 ]
 
 # Marimo notebooks (e.g. plot_pool_marimo.py)
-marimo = [
-    "marimo>=0.15",
+notebooks = [
+    "jupyter>=1.1.1",
+    "marimo>=0.19.11",
 ]
 
 # Testing, docs, dev tooling

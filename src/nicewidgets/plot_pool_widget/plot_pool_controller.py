@@ -116,6 +116,15 @@ class PlotPoolController:
         self._on_table_row_selected = cfg.on_table_row_selected
         self._on_refresh_requested = cfg.on_refresh_requested
 
+        # Guard: Check for missing pre_filter columns and filter them out
+        missing_columns = [col for col in self.pre_filter_columns if col not in df.columns]
+        if missing_columns:
+            error_msg = f"DataFrame missing pre_filter column(s): {', '.join(repr(c) for c in missing_columns)}. These will be ignored."
+            logger.error(error_msg)
+            ui.notify(error_msg, type="warning")
+            # Filter out missing columns
+            self.pre_filter_columns = [col for col in self.pre_filter_columns if col in df.columns]
+
         # Initialize DataFrameProcessor for data operations
         self.data_processor = DataFrameProcessor(
             df,
