@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from nicewidgets.plot_pool_widget.plot_state import PlotState, PlotType
+
 
 # Sentinel for "no filter" (matches pre_filter_conventions.PRE_FILTER_NONE).
 PRE_FILTER_NONE = "(none)"
@@ -299,61 +301,68 @@ def dict_of_lists_to_tsv(data: Dict[str, List[float]]) -> str:
 
 def swarm_report(
     df_master: pd.DataFrame,
+    state: PlotState,
     *,
-    pre_filter_columns: list[str],
-    pre_filter: dict[str, Any],
     unique_row_id_col: str,
-    group_col: str,
-    ycol: str,
-    color_grouping: Optional[str] = None,
-    use_absolute_value: bool = False,
-    use_remove_values: bool = False,
-    remove_values_threshold: Optional[float] = None,
-    cv_epsilon: float = 1e-10,
+    pre_filter_columns: Optional[list[str]] = None,
 ) -> str:
     """
     Produce full TSV report: parameters, stats table, ragged values table.
 
     Args:
         df_master: Master (raw) dataframe.
-        pre_filter_columns: Column names for pre-filtering.
-        pre_filter: Map column -> selected value (PRE_FILTER_NONE = no filter).
+        state: PlotState with plot configuration (pre_filter, group_col, ycol, etc.).
         unique_row_id_col: Row ID column.
-        group_col: X-axis grouping column for swarm.
-        ycol: Y column.
-        color_grouping: Optional nested grouping; None/""/"(none)" = ignore.
-        use_absolute_value, use_remove_values, remove_values_threshold, cv_epsilon:
-            Same as PlotState for swarm.
+        pre_filter_columns: Column names for pre-filtering. Defaults to list(state.pre_filter.keys()).
 
     Returns:
         Multi-section TSV string suitable for print() or copy/paste.
     """
+    print(state)
+    
+    plot_type = state.plot_type
+
+    if pre_filter_columns is None:
+        pre_filter_columns = list(state.pre_filter.keys())
+    xcol = state.ycol
+    ycol = state.ycol
+    group_col = state.group_col  # Group/Color
+    color_grouping = state.color_grouping  # Group/Nesting
+
     df_f = filter_by_pre_filters(
-        df_master, pre_filter_columns, pre_filter, unique_row_id_col
+        df_master, pre_filter_columns, state.pre_filter, unique_row_id_col
     )
 
     stats_df = swarm_full_stats_table(
         df_f, group_col, ycol, color_grouping,
-        use_absolute=use_absolute_value,
-        use_remove_values=use_remove_values,
-        remove_values_threshold=remove_values_threshold,
-        cv_epsilon=cv_epsilon,
+        use_absolute=state.use_absolute_value,
+        use_remove_values=state.use_remove_values,
+        remove_values_threshold=state.remove_values_threshold,
+        cv_epsilon=state.cv_epsilon,
     )
     values_dict = swarm_values_per_group(
         df_f, group_col, ycol, color_grouping,
-        use_absolute=use_absolute_value,
-        use_remove_values=use_remove_values,
-        remove_values_threshold=remove_values_threshold,
+        use_absolute=state.use_absolute_value,
+        use_remove_values=state.use_remove_values,
+        remove_values_threshold=state.remove_values_threshold,
     )
 
     lines: list[str] = []
 
     # Parameters
     lines.append("# Parameters")
-    lines.append(f"pre_filter\t{pre_filter}")
+    lines.append(f"plot_type\t{state.plot_type.value}")
+    lines.append(f"pre_filter\t{state.pre_filter}")
+
+    if plot_type in [PlotType.SCATTER, PlotType.HISTOGRAM, PlotType.CUMULATIVE_HISTOGRAM]:
+        lines.append(f"xcol\t{xcol}")        
+
+    if plot_type not in [PlotType.HISTOGRAM, PlotType.CUMULATIVE_HISTOGRAM]:
+        lines.append(f"ycol\t{ycol}")
+
     lines.append(f"group_col\t{group_col}")
-    lines.append(f"ycol\t{ycol}")
     lines.append(f"color_grouping\t{color_grouping if color_grouping else '(none)'}")
+    
     lines.append("")
 
     # Stats table
@@ -373,13 +382,13 @@ def swarm_report(
 
 def swarm_report_from_state(
     df_master: pd.DataFrame,
-    state: "PlotState",
+    state: PlotState,
     *,
     unique_row_id_col: str,
     pre_filter_columns: Optional[list[str]] = None,
 ) -> str:
     """
-    Produce full TSV report from a PlotState. Unpacks state and calls swarm_report().
+    Produce full TSV report from a PlotState. Calls swarm_report().
 
     Args:
         df_master: Master (raw) dataframe.
@@ -390,21 +399,11 @@ def swarm_report_from_state(
     Returns:
         Multi-section TSV string suitable for print() or copy/paste.
     """
-    if pre_filter_columns is None:
-        pre_filter_columns = list(state.pre_filter.keys())
-    group_col = state.group_col if state.group_col is not None else state.xcol
     return swarm_report(
         df_master,
-        pre_filter_columns=pre_filter_columns,
-        pre_filter=state.pre_filter,
+        state,
         unique_row_id_col=unique_row_id_col,
-        group_col=group_col,
-        ycol=state.ycol,
-        color_grouping=state.color_grouping,
-        use_absolute_value=state.use_absolute_value,
-        use_remove_values=state.use_remove_values,
-        remove_values_threshold=state.remove_values_threshold,
-        cv_epsilon=state.cv_epsilon,
+        pre_filter_columns=pre_filter_columns,
     )
 
 
@@ -424,14 +423,19 @@ def _example_from_csv(
 ) -> None:
     """Load CSV, run swarm_report, print result."""
     df = pd.read_csv(csv_path)
+    state = PlotState(
+        pre_filter=pre_filter,
+        xcol=group_col,
+        ycol=ycol,
+        plot_type=PlotType.SWARM,
+        group_col=group_col,
+        color_grouping=color_grouping,
+    )
     report = swarm_report(
         df,
-        pre_filter_columns=pre_filter_columns,
-        pre_filter=pre_filter,
+        state,
         unique_row_id_col=unique_row_id_col,
-        group_col=group_col,
-        ycol=ycol,
-        color_grouping=color_grouping,
+        pre_filter_columns=pre_filter_columns,
     )
     print(report)
 

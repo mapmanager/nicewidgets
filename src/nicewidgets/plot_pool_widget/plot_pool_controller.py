@@ -330,6 +330,7 @@ class PlotPoolController:
             on_apply_current_to_others=self._apply_current_to_others,
             on_replot_current=self._replot_current,
             on_reset_to_default=self._reset_to_default,
+            on_copy_stats=lambda: self._copy_report_for_plot(self.current_plot_index),
             on_clear_selection=self._clear_selection,
             on_x_column_selected=self._on_x_column_selected,
             on_y_column_selected=self._on_y_column_selected,
@@ -447,6 +448,7 @@ class PlotPoolController:
                             on_apply_current_to_others=self._apply_current_to_others,
                             on_replot_current=self._replot_current,
                             on_reset_to_default=self._reset_to_default,
+                            on_copy_stats=lambda: self._copy_report_for_plot(self.current_plot_index),
                             on_clear_selection=self._clear_selection,
                             on_x_column_selected=self._on_x_column_selected,
                             on_y_column_selected=self._on_y_column_selected,
@@ -660,7 +662,8 @@ class PlotPoolController:
                 pre_filter_columns=self.pre_filter_columns,
             )
             copy_to_clipboard(report)
-            ui.notify("Data report copied to clipboard", type="positive")
+            plot_type = self.plot_states[plot_index].plot_type.value
+            ui.notify(f"Data report copied to clipboard for {plot_type} {plot_index + 1}", type="positive")
         except Exception as ex:
             logger.exception("Failed to copy data report")
             ui.notify(f"Could not generate report: {ex}", type="negative")
