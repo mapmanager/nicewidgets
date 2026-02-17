@@ -1210,7 +1210,7 @@ class FigureGenerator:
             return ""
 
         fig = go.Figure()
-        n_bins = 50
+        n_bins = state.histogram_bins
 
         if not state.group_col:
             # Single cumulative histogram over all x
@@ -1317,7 +1317,7 @@ class FigureGenerator:
             fig.add_trace(go.Histogram(
                 x=x.values,
                 name=format_pre_filter_display(state.pre_filter),
-                nbinsx=50,
+                nbinsx=state.histogram_bins,
                 showlegend=state.show_legend,
             ))
             legend_title = None
@@ -1330,7 +1330,7 @@ class FigureGenerator:
                 fig.add_trace(go.Histogram(
                     x=sub["x"].values,
                     name=str(group_value),
-                    nbinsx=50,
+                    nbinsx=state.histogram_bins,
                     opacity=0.6,
                     showlegend=state.show_legend,
                 ))

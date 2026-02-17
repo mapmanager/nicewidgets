@@ -38,7 +38,7 @@ def copy_to_clipboard(text: str) -> None:
     native_cfg = getattr(app, "native", None)
     is_native_window = getattr(native_cfg, "main_window", None) is not None
 
-    print(text)
+    # print(text)
     if is_native_window:
         # Desktop mode
         if pyperclip is None:

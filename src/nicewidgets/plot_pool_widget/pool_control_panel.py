@@ -75,6 +75,7 @@ class PoolControlPanel:
         self._color_grouping_select: Optional[ui.select] = None
         self._ystat_select: Optional[ui.select] = None
         self._cv_epsilon_input: Optional[ui.number] = None
+        self._histogram_bins_input: Optional[ui.number] = None
         self._abs_value_checkbox: Optional[ui.checkbox] = None
         self._swarm_jitter_amount_input: Optional[ui.number] = None
         self._swarm_group_offset_input: Optional[ui.number] = None
@@ -197,14 +198,23 @@ class PoolControlPanel:
                 label="Y stat (grouped)",
                 on_change=self._on_any_change,
             ).classes("w-full")
-            self._cv_epsilon_input = ui.number(
-                label="CV ε (|μ| < this → NaN)",
-                value=self._initial_state.cv_epsilon,
-                min=1e-20,
-                max=1.0,
-                step=1e-12,
-                on_change=self._on_any_change,
-            ).classes("w-full")
+            with ui.row().classes("w-full gap-2 items-center"):
+                self._cv_epsilon_input = ui.number(
+                    label="CV ε (|μ| < this → NaN)",
+                    value=self._initial_state.cv_epsilon,
+                    min=1e-20,
+                    max=1.0,
+                    step=1e-12,
+                    on_change=self._on_any_change,
+                ).classes("flex-1")
+                self._histogram_bins_input = ui.number(
+                    label="Histogram bins",
+                    value=self._initial_state.histogram_bins,
+                    min=5,
+                    max=500,
+                    step=5,
+                    on_change=self._on_any_change,
+                ).classes("flex-1")
 
             with ui.row().classes("w-full gap-2 items-center"):
                 self._swarm_jitter_amount_input = ui.number(
@@ -360,6 +370,8 @@ class PoolControlPanel:
         self._ystat_select.value = state.ystat
         if self._cv_epsilon_input is not None:
             self._cv_epsilon_input.value = state.cv_epsilon
+        if self._histogram_bins_input is not None:
+            self._histogram_bins_input.value = state.histogram_bins
         self._group_select.value = state.group_col if state.group_col else "(none)"
         self._color_grouping_select.value = state.color_grouping if state.color_grouping else "(none)"
         self._abs_value_checkbox.value = state.use_absolute_value
@@ -408,6 +420,7 @@ class PoolControlPanel:
             color_grouping=color_grouping,
             ystat=str(self._ystat_select.value),
             cv_epsilon=float(self._cv_epsilon_input.value) if self._cv_epsilon_input is not None and self._cv_epsilon_input.value is not None else 1e-10,
+            histogram_bins=int(self._histogram_bins_input.value) if self._histogram_bins_input is not None and self._histogram_bins_input.value is not None else 50,
             use_absolute_value=bool(self._abs_value_checkbox.value),
             swarm_jitter_amount=float(self._swarm_jitter_amount_input.value or 0.35),
             swarm_group_offset=float(self._swarm_group_offset_input.value or 0.3),
@@ -429,6 +442,10 @@ class PoolControlPanel:
             return
         if self._cv_epsilon_input is not None:
             self._cv_epsilon_input.set_enabled(plot_type == PlotType.GROUPED)
+        if self._histogram_bins_input is not None:
+            self._histogram_bins_input.set_enabled(
+                plot_type in {PlotType.HISTOGRAM, PlotType.CUMULATIVE_HISTOGRAM}
+            )
         needs_group = plot_type in {
             PlotType.GROUPED,
             PlotType.SCATTER,

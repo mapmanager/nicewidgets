@@ -71,6 +71,29 @@ def filter_by_pre_filters(
 # -----------------------------------------------------------------------------
 
 
+def get_x_values(
+    df_f: pd.DataFrame,
+    xcol: str,
+    use_absolute: bool = False,
+    use_remove_values: bool = False,
+    remove_values_threshold: Optional[float] = None,
+) -> pd.Series:
+    """
+    Get the x column as numeric series, with optional transformations.
+
+    Same logic as DataFrameProcessor.get_x_values(). Converts column to numeric
+    (coerce errors to NaN), optionally applies abs(), and optionally sets values
+    outside [-threshold, +threshold] to NaN.
+    """
+    x = pd.to_numeric(df_f[xcol], errors="coerce")
+    if use_absolute:
+        x = x.abs()
+    if use_remove_values and remove_values_threshold is not None:
+        x = x.copy()
+        x[(x < -remove_values_threshold) | (x > remove_values_threshold)] = np.nan
+    return x
+
+
 def get_y_values(
     df_f: pd.DataFrame,
     ycol: str,
@@ -110,15 +133,16 @@ def _use_color_grouping(
 
 
 # -----------------------------------------------------------------------------
-# Step 3: Build tmp frame (same structure as _figure_swarm)
+# Step 3: Prepare swarm data (filtering + normalization in one place)
 # -----------------------------------------------------------------------------
 
 
-def _build_swarm_tmp(
+def prepare_swarm_tmp(
     df_f: pd.DataFrame,
     group_col: str,
     ycol: str,
     color_grouping: Optional[str],
+    *,
     use_absolute: bool = False,
     use_remove_values: bool = False,
     remove_values_threshold: Optional[float] = None,
@@ -126,8 +150,14 @@ def _build_swarm_tmp(
     """
     Build tmp dataframe with x (group_col), y, and optionally color.
 
-    Matches _figure_swarm: dropna(subset=["x"]). y may contain NaN;
-    we dropna on y when computing stats so count reflects plotted points.
+    Applies filtering and normalization (abs, remove outliers) to y values.
+    Single place for this logic — used by swarm_full_stats_table and swarm_values_per_group.
+
+    Matches _figure_swarm: dropna(subset=["x"]). Drops rows with NaN y so stats
+    reflect only plotted values.
+
+    Returns:
+        DataFrame with columns x, y, and optionally color.
     """
     x_cat = df_f[group_col].astype(str)
     y = get_y_values(
@@ -140,7 +170,6 @@ def _build_swarm_tmp(
     if _use_color_grouping(color_grouping, df_f):
         tmp_data["color"] = df_f[color_grouping].astype(str)
     tmp = pd.DataFrame(tmp_data).dropna(subset=["x"])
-    # Drop rows with NaN y so stats reflect only plotted values
     tmp = tmp.dropna(subset=["y"])
     tmp["y"] = pd.to_numeric(tmp["y"], errors="coerce")
     return tmp
@@ -152,20 +181,17 @@ def _build_swarm_tmp(
 
 
 def swarm_full_stats_table(
-    df_f: pd.DataFrame,
+    tmp: pd.DataFrame,
     group_col: str,
-    ycol: str,
-    color_grouping: Optional[str] = None,
-    use_absolute: bool = False,
-    use_remove_values: bool = False,
-    remove_values_threshold: Optional[float] = None,
+    color_grouping: Optional[str],
+    *,
     cv_epsilon: float = 1e-10,
 ) -> pd.DataFrame:
     """
     Compute full stats table per group for swarm plot.
 
-    Groups by (group_col, color_grouping) when color_grouping is set and valid;
-    otherwise groups by group_col only. Ignores color_grouping when None, "", or "(none)".
+    Expects tmp from prepare_swarm_tmp (columns x, y, and optionally color).
+    Groups by (group_col, color_grouping) when tmp has "color"; else by group_col.
 
     Stats: count, min, max, mean, median, std, sem, cv.
     std and sem use ddof=1. cv = std/mean with NaN when |mean| < cv_epsilon.
@@ -174,19 +200,13 @@ def swarm_full_stats_table(
         DataFrame with bookkeeping columns (group_col, color_grouping if used) before
         stats columns. No compound group_key; group dimensions are explicit columns.
     """
-    tmp = _build_swarm_tmp(
-        df_f, group_col, ycol, color_grouping,
-        use_absolute=use_absolute,
-        use_remove_values=use_remove_values,
-        remove_values_threshold=remove_values_threshold,
-    )
     if len(tmp) == 0:
         cols = [group_col]
-        if _use_color_grouping(color_grouping, df_f):
-            cols.append(color_grouping)
+        if "color" in tmp.columns:
+            cols.append(color_grouping or "color")
         return pd.DataFrame(columns=cols + STATS_COLUMNS)
 
-    use_color = _use_color_grouping(color_grouping, df_f)
+    use_color = "color" in tmp.columns
     if use_color:
         tmp["_group_key"] = list(zip(tmp["x"].astype(str), tmp["color"].astype(str)))
     else:
@@ -229,29 +249,18 @@ def swarm_full_stats_table(
 
 
 def swarm_values_per_group(
-    df_f: pd.DataFrame,
-    group_col: str,
-    ycol: str,
-    color_grouping: Optional[str] = None,
-    use_absolute: bool = False,
-    use_remove_values: bool = False,
-    remove_values_threshold: Optional[float] = None,
+    tmp: pd.DataFrame,
 ) -> Dict[str, List[float]]:
     """
     Return dict mapping group key -> list of y values (what goes into each swarm column).
 
+    Expects tmp from prepare_swarm_tmp (columns x, y, and optionally color).
     Same grouping logic as swarm_full_stats_table. Keys sorted for stable output.
     """
-    tmp = _build_swarm_tmp(
-        df_f, group_col, ycol, color_grouping,
-        use_absolute=use_absolute,
-        use_remove_values=use_remove_values,
-        remove_values_threshold=remove_values_threshold,
-    )
     if len(tmp) == 0:
         return {}
 
-    if _use_color_grouping(color_grouping, df_f):
+    if "color" in tmp.columns:
         tmp["group_key"] = tmp["x"].astype(str) + "_" + tmp["color"].astype(str)
     else:
         tmp["group_key"] = tmp["x"].astype(str)
@@ -259,6 +268,189 @@ def swarm_values_per_group(
     result: Dict[str, List[float]] = {}
     for key, sub in tmp.groupby("group_key", sort=True):
         result[str(key)] = sub["y"].tolist()
+    return result
+
+
+# -----------------------------------------------------------------------------
+# Scatter: prepare_scatter_tmp, scatter_full_stats_table, scatter_values_per_group
+# -----------------------------------------------------------------------------
+
+
+def prepare_scatter_tmp(
+    df_f: pd.DataFrame,
+    xcol: str,
+    ycol: str,
+    group_col: Optional[str],
+    *,
+    use_absolute: bool = False,
+    use_remove_values: bool = False,
+    remove_values_threshold: Optional[float] = None,
+) -> pd.DataFrame:
+    """
+    Build tmp dataframe with x, y, and g (group).
+
+    Applies same transforms to x and y as get_x_values/get_y_values.
+    Drops rows where x or y is NaN.
+    Uses group_col for g; when group_col is None, g = "(all)".
+    """
+    x = get_x_values(
+        df_f, xcol,
+        use_absolute=use_absolute,
+        use_remove_values=use_remove_values,
+        remove_values_threshold=remove_values_threshold,
+    )
+    y = get_y_values(
+        df_f, ycol,
+        use_absolute=use_absolute,
+        use_remove_values=use_remove_values,
+        remove_values_threshold=remove_values_threshold,
+    )
+    if group_col and group_col in df_f.columns:
+        g = df_f[group_col].astype(str)
+    else:
+        g = pd.Series(["(all)"] * len(df_f), index=df_f.index)
+    tmp = pd.DataFrame({"x": x, "y": y, "g": g}).dropna(subset=["x", "y"])
+    tmp = tmp.dropna(subset=["g"])
+    return tmp
+
+
+def scatter_full_stats_table(
+    tmp: pd.DataFrame,
+    *,
+    cv_epsilon: float = 1e-10,
+) -> pd.DataFrame:
+    """
+    Compute stats per group for scatter: count, x/y min/max/mean, y median/std/sem/cv.
+    Expects tmp from prepare_scatter_tmp (columns x, y, g).
+    """
+    if len(tmp) == 0:
+        return pd.DataFrame(columns=["group", "count", "x_min", "x_max", "x_mean", "y_min", "y_max", "y_mean", "y_median", "y_std", "y_sem", "y_cv"])
+
+    grp = tmp.groupby("g", sort=True)
+    count = grp.size()
+    x_min = grp["x"].min()
+    x_max = grp["x"].max()
+    x_mean = grp["x"].mean()
+    y_min = grp["y"].min()
+    y_max = grp["y"].max()
+    y_mean = grp["y"].mean()
+    y_median = grp["y"].median()
+    y_std = grp["y"].std(ddof=1)
+    y_sem = grp["y"].sem(ddof=1)
+    y_cv = (y_std / y_mean).where(np.abs(y_mean) >= cv_epsilon, np.nan)
+
+    return pd.DataFrame({
+        "group": count.index,
+        "count": count.values,
+        "x_min": x_min.values,
+        "x_max": x_max.values,
+        "x_mean": x_mean.values,
+        "y_min": y_min.values,
+        "y_max": y_max.values,
+        "y_mean": y_mean.values,
+        "y_median": y_median.values,
+        "y_std": y_std.values,
+        "y_sem": y_sem.values,
+        "y_cv": y_cv.values,
+    })
+
+
+def scatter_values_per_group(tmp: pd.DataFrame) -> Dict[str, List[float]]:
+    """
+    Return dict of x,y lists per group for scatter. No group: {"x": [...], "y": [...]}.
+    With group: {"x_A": [...], "y_A": [...], "x_B": [...], "y_B": [...]}.
+    """
+    if len(tmp) == 0:
+        return {}
+
+    result: Dict[str, List[float]] = {}
+    for gval, sub in tmp.groupby("g", sort=True):
+        lab = str(gval)
+        result[f"x_{lab}"] = sub["x"].tolist()
+        result[f"y_{lab}"] = sub["y"].tolist()
+    # Single group "(all)": use "x" and "y" keys (no suffix) for consistency with spec
+    if len(result) == 1 and "(all)" in result:
+        x_vals = result.pop("x_(all)")
+        y_vals = result.pop("y_(all)")
+        result["x"] = x_vals
+        result["y"] = y_vals
+    return result
+
+
+# -----------------------------------------------------------------------------
+# Histogram values per group (x = positions, y = counts or cumulative proportion)
+# -----------------------------------------------------------------------------
+
+
+def histogram_values_per_group(
+    df_f: pd.DataFrame,
+    xcol: str,
+    group_col: Optional[str],
+    nbins: int,
+    *,
+    cumulative: bool = False,
+    use_absolute: bool = False,
+    use_remove_values: bool = False,
+    remove_values_threshold: Optional[float] = None,
+) -> Dict[str, List[float]]:
+    """
+    Return dict of x and y lists for histogram, suitable for dict_of_lists_to_tsv.
+
+    Matches the plotting logic in FigureGenerator._figure_histogram and
+    _figure_cumulative_histogram. Uses only group_col (not color_grouping).
+
+    Chosen options:
+    - Regular histogram: x = bin centers, y = raw counts.
+      (Alternative: x = bin edges.)
+    - Cumulative histogram: x = bin edges (for step plot), y = cumulative
+      proportions in [0, 1].
+      (Alternative: x = bin centers.)
+    - nbins: parameter (same as _figure_histogram / _figure_cumulative_histogram).
+
+    No group_col: keys "x_(all)", "y_(all)".
+    With group_col: keys "x_{group}", "y_{group}".
+    """
+    x = get_x_values(
+        df_f, xcol,
+        use_absolute=use_absolute,
+        use_remove_values=use_remove_values,
+        remove_values_threshold=remove_values_threshold,
+    ).dropna()
+    if len(x) == 0:
+        return {}
+
+    result: Dict[str, List[float]] = {}
+
+    if group_col is None or group_col not in df_f.columns:
+        groups = [("(all)", x)]
+    else:
+        g = df_f.loc[x.index, group_col].astype(str)
+        tmp = pd.DataFrame({"x": x, "g": g}).dropna(subset=["g"])
+        if len(tmp) == 0:
+            return {}
+        groups = [(str(k), sub["x"]) for k, sub in tmp.groupby("g", sort=True)]
+
+    for group_label, x_vals in groups:
+        x_arr = x_vals.values
+        if len(x_arr) == 0:
+            continue
+        counts, bin_edges = np.histogram(x_arr, bins=nbins)
+
+        if cumulative:
+            cumsum = np.cumsum(counts)
+            total = cumsum[-1]
+            y_vals = (cumsum / total if total > 0 else cumsum).tolist()
+            # x: bin edges for step plot (alternative: bin centers)
+            x_vals_out = bin_edges.tolist()
+        else:
+            # x: bin centers (alternative: bin_edges)
+            bin_centers = ((bin_edges[:-1] + bin_edges[1:]) / 2).tolist()
+            x_vals_out = bin_centers
+            y_vals = counts.tolist()
+
+        result[f"x_{group_label}"] = x_vals_out
+        result[f"y_{group_label}"] = y_vals
+
     return result
 
 
@@ -318,34 +510,84 @@ def swarm_report(
     Returns:
         Multi-section TSV string suitable for print() or copy/paste.
     """
-    print(state)
-    
     plot_type = state.plot_type
 
     if pre_filter_columns is None:
         pre_filter_columns = list(state.pre_filter.keys())
-    xcol = state.ycol
+    xcol = state.xcol
     ycol = state.ycol
     group_col = state.group_col  # Group/Color
     color_grouping = state.color_grouping  # Group/Nesting
+    nbins = state.histogram_bins
 
     df_f = filter_by_pre_filters(
         df_master, pre_filter_columns, state.pre_filter, unique_row_id_col
     )
 
-    stats_df = swarm_full_stats_table(
-        df_f, group_col, ycol, color_grouping,
-        use_absolute=state.use_absolute_value,
-        use_remove_values=state.use_remove_values,
-        remove_values_threshold=state.remove_values_threshold,
-        cv_epsilon=state.cv_epsilon,
-    )
-    values_dict = swarm_values_per_group(
-        df_f, group_col, ycol, color_grouping,
-        use_absolute=state.use_absolute_value,
-        use_remove_values=state.use_remove_values,
-        remove_values_threshold=state.remove_values_threshold,
-    )
+    if plot_type in (PlotType.HISTOGRAM, PlotType.CUMULATIVE_HISTOGRAM):
+        values_dict = histogram_values_per_group(
+            df_f,
+            xcol,
+            group_col,
+            nbins,
+            cumulative=(plot_type == PlotType.CUMULATIVE_HISTOGRAM),
+            use_absolute=state.use_absolute_value,
+            use_remove_values=state.use_remove_values,
+            remove_values_threshold=state.remove_values_threshold,
+        )
+        # Simple x-value stats per group for histogram (count, min, max, mean)
+        x_series = get_x_values(
+            df_f, xcol,
+            use_absolute=state.use_absolute_value,
+            use_remove_values=state.use_remove_values,
+            remove_values_threshold=state.remove_values_threshold,
+        ).dropna()
+        if len(x_series) == 0:
+            stats_df = pd.DataFrame(columns=["group", "count", "min", "max", "mean"])
+        elif group_col and group_col in df_f.columns:
+            g = df_f.loc[x_series.index, group_col].astype(str)
+            tmp = pd.DataFrame({"x": x_series, "g": g}).dropna(subset=["g"])
+            grp = tmp.groupby("g", sort=True)["x"]
+            stats_df = pd.DataFrame({
+                "group": grp.count().index,
+                "count": grp.count().values,
+                "min": grp.min().values,
+                "max": grp.max().values,
+                "mean": grp.mean().values,
+            })
+        else:
+            stats_df = pd.DataFrame([{
+                "group": "(all)",
+                "count": len(x_series),
+                "min": float(x_series.min()),
+                "max": float(x_series.max()),
+                "mean": float(x_series.mean()),
+            }])
+    elif plot_type == PlotType.SCATTER:
+        tmp = prepare_scatter_tmp(
+            df_f, xcol, ycol, group_col,
+            use_absolute=state.use_absolute_value,
+            use_remove_values=state.use_remove_values,
+            remove_values_threshold=state.remove_values_threshold,
+        )
+        stats_df = scatter_full_stats_table(tmp, cv_epsilon=state.cv_epsilon)
+        values_dict = scatter_values_per_group(tmp)
+    else:
+        # Swarm/box/violin require group_col; use synthetic "(all)" if None so prepare_swarm_tmp does not fail.
+        effective_group_col = group_col if group_col else "group"
+        if not group_col:
+            df_f = df_f.copy()
+            df_f["group"] = "(all)"
+        tmp = prepare_swarm_tmp(
+            df_f, effective_group_col, ycol, color_grouping,
+            use_absolute=state.use_absolute_value,
+            use_remove_values=state.use_remove_values,
+            remove_values_threshold=state.remove_values_threshold,
+        )
+        stats_df = swarm_full_stats_table(
+            tmp, effective_group_col, color_grouping, cv_epsilon=state.cv_epsilon
+        )
+        values_dict = swarm_values_per_group(tmp)
 
     lines: list[str] = []
 
@@ -354,10 +596,13 @@ def swarm_report(
     lines.append(f"plot_type\t{state.plot_type.value}")
     lines.append(f"pre_filter\t{state.pre_filter}")
 
-    if plot_type in [PlotType.SCATTER, PlotType.HISTOGRAM, PlotType.CUMULATIVE_HISTOGRAM]:
-        lines.append(f"xcol\t{xcol}")        
+    if plot_type in (PlotType.SCATTER, PlotType.HISTOGRAM, PlotType.CUMULATIVE_HISTOGRAM):
+        lines.append(f"xcol\t{xcol}")
 
-    if plot_type not in [PlotType.HISTOGRAM, PlotType.CUMULATIVE_HISTOGRAM]:
+    if plot_type in (PlotType.HISTOGRAM, PlotType.CUMULATIVE_HISTOGRAM):
+        lines.append(f"histogram_bins\t{nbins}")
+
+    if plot_type not in (PlotType.HISTOGRAM, PlotType.CUMULATIVE_HISTOGRAM):
         lines.append(f"ycol\t{ycol}")
 
     lines.append(f"group_col\t{group_col}")
