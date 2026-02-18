@@ -14,7 +14,7 @@ from nicegui import ui
 from nicewidgets.plot_pool_widget.lazy_section import LazySection, LazySectionConfig
 from nicewidgets.plot_pool_widget.plot_helpers import _ensure_aggrid_compact_css
 from nicewidgets.utils.logging import get_logger
-from nicewidgets.gold_standard_aggrid import gold_standard_aggrid
+from nicewidgets.aggrid_gold_standard.gold_standard_aggrid_v2 import gold_standard_aggrid_v2 as gold_standard_aggrid
 
 logger = get_logger(__name__)
 
