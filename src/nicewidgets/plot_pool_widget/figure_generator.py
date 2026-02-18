@@ -7,7 +7,7 @@ from data and plot state, separating figure generation logic from UI/controller 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -17,6 +17,13 @@ from nicewidgets.utils.logging import get_logger
 from nicewidgets.plot_pool_widget.plot_state import PlotType, PlotState
 from nicewidgets.plot_pool_widget.dataframe_processor import DataFrameProcessor
 from nicewidgets.plot_pool_widget.plot_helpers import is_categorical_column
+from nicewidgets.plot_pool_widget.plot_summary import (
+    PlotSummary,
+    build_cumulative_histogram_summary,
+    build_histogram_summary,
+    build_scatter_summary,
+    build_swarm_summary,
+)
 from nicewidgets.plot_pool_widget.pre_filter_conventions import format_pre_filter_display
 
 logger = get_logger(__name__)
@@ -69,16 +76,16 @@ class FigureGenerator:
         state: PlotState,
         *,
         selected_row_ids: Optional[set[str]] = None,
-    ) -> dict:
-        """Generate Plotly figure dictionary based on plot state.
-        
+    ) -> Tuple[dict, PlotSummary]:
+        """Generate Plotly figure dictionary and plot summary based on plot state.
+
         Args:
             df_f: Filtered dataframe (already filtered by pre_filter).
             state: PlotState to use for generating the figure.
             selected_row_ids: If set, these row_ids are shown as selected (linked selection).
-            
+
         Returns:
-            Plotly figure dictionary.
+            Tuple of (Plotly figure dictionary, PlotSummary).
         """
         logger.info(
             f"FigureGenerator.make_figure: plot_type={state.plot_type.value}, "
@@ -87,45 +94,93 @@ class FigureGenerator:
         )
 
         if state.plot_type == PlotType.GROUPED:
-            result = self._figure_grouped(df_f, state)
+            fig_dict, summary = self._figure_grouped(df_f, state)
         elif state.plot_type == PlotType.SCATTER:
-            result = self._figure_split_scatter(df_f, state, selected_row_ids=selected_row_ids)
+            fig_dict, summary = self._figure_split_scatter(df_f, state, selected_row_ids=selected_row_ids)
         elif state.plot_type == PlotType.BOX_PLOT:
             if not state.group_col or not is_categorical_column(df_f, state.group_col):
                 logger.warning(
                     f"Box plot requires categorical group_col for x-axis; group_col={state.group_col} is not categorical. "
                     "Falling back to scatter."
                 )
-                result = self._figure_split_scatter(df_f, state, selected_row_ids=selected_row_ids)
+                fig_dict, summary = self._figure_split_scatter(df_f, state, selected_row_ids=selected_row_ids)
             else:
-                result = self._figure_box(df_f, state)
+                fig_dict, summary = self._figure_box(df_f, state)
         elif state.plot_type == PlotType.VIOLIN:
             if not state.group_col or not is_categorical_column(df_f, state.group_col):
                 logger.warning(
                     f"Violin plot requires categorical group_col for x-axis; group_col={state.group_col} is not categorical. "
                     "Falling back to scatter."
                 )
-                result = self._figure_split_scatter(df_f, state, selected_row_ids=selected_row_ids)
+                fig_dict, summary = self._figure_split_scatter(df_f, state, selected_row_ids=selected_row_ids)
             else:
-                result = self._figure_violin(df_f, state)
+                fig_dict, summary = self._figure_violin(df_f, state)
         elif state.plot_type == PlotType.SWARM:
             if not state.group_col or not is_categorical_column(df_f, state.group_col):
                 logger.warning(
                     f"Swarm plot requires categorical group_col for x-axis; group_col={state.group_col} is not categorical. "
                     "Falling back to scatter."
                 )
-                result = self._figure_split_scatter(df_f, state, selected_row_ids=selected_row_ids)
+                fig_dict, summary = self._figure_split_scatter(df_f, state, selected_row_ids=selected_row_ids)
             else:
-                result = self._figure_swarm(df_f, state, selected_row_ids=selected_row_ids)
+                fig_dict, summary = self._figure_swarm(df_f, state, selected_row_ids=selected_row_ids)
         elif state.plot_type == PlotType.HISTOGRAM:
-            result = self._figure_histogram(df_f, state)
+            fig_dict, summary = self._figure_histogram(df_f, state)
         elif state.plot_type == PlotType.CUMULATIVE_HISTOGRAM:
-            result = self._figure_cumulative_histogram(df_f, state)
+            fig_dict, summary = self._figure_cumulative_histogram(df_f, state)
         else:
-            # Fallback (e.g. unknown type): use scatter
-            result = self._figure_split_scatter(df_f, state, selected_row_ids=selected_row_ids)
-        
-        logger.debug(f"Figure generated: {len(result.get('data', []))} traces")
+            fig_dict, summary = self._figure_split_scatter(df_f, state, selected_row_ids=selected_row_ids)
+
+        logger.debug(f"Figure generated: {len(fig_dict.get('data', []))} traces")
+        return fig_dict, summary
+
+    def _compute_swarm_x_jitter(
+        self, tmp: pd.DataFrame, state: PlotState
+    ) -> pd.Series:
+        """Compute x_jitter for tmp rows, matching _figure_swarm jitter logic.
+
+        Returns a Series with tmp.index and dtype float (jittered x positions).
+        """
+        unique_cats = sorted(tmp["x"].astype(str).unique())
+        cat_to_pos = {cat: i for i, cat in enumerate(unique_cats)}
+        jitter_amount = state.swarm_jitter_amount
+        result = pd.Series(index=tmp.index, dtype=float)
+
+        if "color" in tmp.columns:
+            unique_colors = sorted(tmp["color"].astype(str).unique())
+            num_colors = len(unique_colors)
+            group_offset_amount = state.swarm_group_offset
+            for color_idx, (color_value, sub) in enumerate(tmp.groupby("color", sort=True)):
+                color_value_str = str(color_value)
+                group_offset = (
+                    (color_idx - (num_colors - 1) / 2) * group_offset_amount
+                    if num_colors > 1
+                    else 0.0
+                )
+                x_positions = sub["x"].map(cat_to_pos).values
+                for x_cat_val in sub["x"].unique():
+                    mask = sub["x"] == x_cat_val
+                    x_pos_subset = x_positions[mask]
+                    x_cat_val_str = str(x_cat_val)
+                    seed = hash(f"{x_cat_val_str}_{color_value_str}") % (2**31)
+                    rng = np.random.default_rng(seed=seed)
+                    jitter = rng.uniform(
+                        -jitter_amount / 2, jitter_amount / 2, size=len(x_pos_subset)
+                    )
+                    x_jittered = x_pos_subset + jitter + group_offset
+                    result.loc[sub.index[mask]] = x_jittered
+        else:
+            for x_cat_val in tmp["x"].unique():
+                mask = tmp["x"] == x_cat_val
+                x_pos_subset = tmp["x"].map(cat_to_pos)[mask].values
+                x_cat_val_str = str(x_cat_val)
+                seed = hash(x_cat_val_str) % (2**31)
+                rng = np.random.default_rng(seed=seed)
+                jitter = rng.uniform(
+                    -jitter_amount / 2, jitter_amount / 2, size=len(x_pos_subset)
+                )
+                x_jittered = x_pos_subset + jitter
+                result.loc[tmp.index[mask]] = x_jittered
         return result
 
     def _is_numeric_axis(self, df_f: pd.DataFrame, col: str) -> bool:
@@ -410,7 +465,9 @@ class FigureGenerator:
             showlegend=state.show_legend,
             uirevision="keep",
         )
-        return fig.to_dict()
+        tmp = pd.DataFrame({"x": x, "y": y, "row_id": row_ids, "file_stem": file_stem}).dropna(subset=["x", "y"])
+        summary = build_scatter_summary(state, tmp, state.xcol, state.ycol, None, None)
+        return fig.to_dict(), summary
 
     def _figure_split_scatter(
         self,
@@ -418,7 +475,7 @@ class FigureGenerator:
         state: PlotState,
         *,
         selected_row_ids: Optional[set[str]] = None,
-    ) -> dict:
+    ) -> Tuple[dict, PlotSummary]:
         """Create scatter plot with color coding by group_col and symbol by color_grouping.
         
         Uses Plotly's native color and symbol parameters:
@@ -666,7 +723,10 @@ class FigureGenerator:
             layout_updates["yaxis"] = dict(autorange=True)
         
         fig.update_layout(**layout_updates)
-        return fig.to_dict()
+        summary = build_scatter_summary(
+            state, tmp, state.xcol, state.ycol, state.group_col, state.color_grouping
+        )
+        return fig.to_dict(), summary
 
     def _figure_swarm(
         self,
@@ -674,7 +734,7 @@ class FigureGenerator:
         state: PlotState,
         *,
         selected_row_ids: Optional[set[str]] = None,
-    ) -> dict:
+    ) -> Tuple[dict, PlotSummary]:
         """Create swarm/strip plot with categorical x (group_col) and optional color_grouping for nested grouping.
         
         Uses manual jitter by converting categorical x values to numeric positions
@@ -820,28 +880,27 @@ class FigureGenerator:
             
             # Add mean and std/sem traces if enabled (grouped by both group_col and color_grouping)
             if state.show_mean or state.show_std_sem:
-                # Calculate stats per (x_category, color_group) combination
-                # Ensure we iterate through all combinations that exist in the data
+                # Calculate stats per (x_category, color_group) using same iteration order and key format as x_ranges
                 group_stats = {}
-                for x_cat_val in tmp["x"].unique():
-                    for color_val in tmp["color"].unique():
+                for x_cat_val in unique_cats:
+                    for color_val in unique_colors:
                         mask = (tmp["x"] == x_cat_val) & (tmp["color"] == color_val)
-                        y_subset = tmp.loc[mask, "y"].values
-                        if len(y_subset) > 0:
-                            mean_val = float(np.mean(y_subset))
-                            std_val = float(np.std(y_subset, ddof=1))
-                            sem_val = std_val / np.sqrt(len(y_subset)) if len(y_subset) > 1 else 0.0
-                            # Ensure consistent string conversion for key matching with x_ranges
-                            group_key = f"{str(x_cat_val)}_{str(color_val)}"
-                            group_stats[group_key] = {
-                                "mean": mean_val,
-                                "std": std_val,
-                                "sem": sem_val,
-                            }
-                # Debug: log if we're missing any x_ranges
-                missing_ranges = set(group_stats.keys()) - set(x_ranges.keys())
-                if missing_ranges:
-                    logger.warning(f"Missing x_ranges for group_stats keys: {missing_ranges}")
+                        y_subset = np.asarray(tmp.loc[mask, "y"].values, dtype=float)
+                        y_valid = y_subset[~np.isnan(y_subset)]
+                        if len(y_valid) == 0:
+                            continue
+                        mean_val = float(np.mean(y_valid))
+                        n = len(y_valid)
+                        std_val = float(np.std(y_valid, ddof=1)) if n > 1 else 0.0
+                        sem_val = std_val / np.sqrt(n) if n > 1 else 0.0
+                        group_key = f"{str(x_cat_val)}_{str(color_val)}"
+                        if group_key not in x_ranges:
+                            continue
+                        group_stats[group_key] = {
+                            "mean": mean_val,
+                            "std": std_val,
+                            "sem": sem_val,
+                        }
                 self._add_mean_std_traces(fig, group_stats, x_ranges, state, include_x_axis=False)
         else:
             # No color_grouping - single trace
@@ -948,9 +1007,11 @@ class FigureGenerator:
             layout_updates["yaxis"] = dict(autorange=True)
         
         fig.update_layout(**layout_updates)
-        return fig.to_dict()
+        tmp["x_jitter"] = self._compute_swarm_x_jitter(tmp, state)
+        summary = build_swarm_summary(state, tmp, state.group_col, state.color_grouping)
+        return fig.to_dict(), summary
 
-    def _figure_box(self, df_f: pd.DataFrame, state: PlotState) -> dict:
+    def _figure_box(self, df_f: pd.DataFrame, state: PlotState) -> Tuple[dict, PlotSummary]:
         """Create box plot with categorical x (group_col) and numeric y. Optional color_grouping for nested grouping."""
         # Use group_col for x-axis (categorical grouping)
         x = df_f[state.group_col].astype(str)
@@ -1041,9 +1102,11 @@ class FigureGenerator:
         if layout_legend_title:
             layout["legend_title_text"] = layout_legend_title
         fig.update_layout(**layout)
-        return fig.to_dict()
+        tmp["row_id"] = df_f.loc[tmp.index, self.unique_row_id_col].astype(str)
+        summary = build_swarm_summary(state, tmp, state.group_col, state.color_grouping)
+        return fig.to_dict(), summary
 
-    def _figure_violin(self, df_f: pd.DataFrame, state: PlotState) -> dict:
+    def _figure_violin(self, df_f: pd.DataFrame, state: PlotState) -> Tuple[dict, PlotSummary]:
         """Create violin plot with categorical x (group_col) and numeric y. Optional color_grouping for nested grouping."""
         # Use group_col for x-axis (categorical grouping)
         x = df_f[state.group_col].astype(str)
@@ -1132,9 +1195,11 @@ class FigureGenerator:
         if layout_legend_title:
             layout["legend_title_text"] = layout_legend_title
         fig.update_layout(**layout)
-        return fig.to_dict()
+        tmp["row_id"] = df_f.loc[tmp.index, self.unique_row_id_col].astype(str)
+        summary = build_swarm_summary(state, tmp, state.group_col, state.color_grouping)
+        return fig.to_dict(), summary
 
-    def _figure_grouped(self, df_f: pd.DataFrame, state: PlotState) -> dict:
+    def _figure_grouped(self, df_f: pd.DataFrame, state: PlotState) -> Tuple[dict, PlotSummary]:
         """Create grouped aggregation plot showing statistics by group.
 
         Args:
@@ -1142,7 +1207,7 @@ class FigureGenerator:
             state: PlotState to use for configuration.
         """
         if not state.group_col:
-            return self._figure_scatter(df_f, state)
+            return self._figure_scatter(df_f, state)  # returns (dict, PlotSummary)
 
         g = df_f[state.group_col].astype(str)
         y = self.data_processor.get_y_values(
@@ -1184,9 +1249,14 @@ class FigureGenerator:
             showlegend=state.show_legend,
             uirevision="keep",
         )
-        return fig.to_dict()
+        summary = PlotSummary(
+            params=state.to_dict(),
+            summary_table=pd.DataFrame(),
+            columnar=pd.DataFrame(),
+        )
+        return fig.to_dict(), summary
 
-    def _figure_cumulative_histogram(self, df_f: pd.DataFrame, state: PlotState) -> dict:
+    def _figure_cumulative_histogram(self, df_f: pd.DataFrame, state: PlotState) -> Tuple[dict, PlotSummary]:
         """Create cumulative histogram: one curve when group is (none), else one curve per group.
 
         Uses x column (with optional abs); each curve is normalized to 0-1 within its group (or overall if no group).
@@ -1198,7 +1268,7 @@ class FigureGenerator:
         ).dropna()
         if len(x) == 0:
             logger.warning("No valid data for cumulative histogram. Falling back to scatter plot.")
-            return self._figure_scatter(df_f, state)
+            return self._figure_scatter(df_f, state)  # returns (dict, PlotSummary)
 
         def _file_stem_for_index(idx):
             if "path" in df_f.columns:
@@ -1242,6 +1312,8 @@ class FigureGenerator:
                 hovertemplate=hovertemplate,
             ))
             legend_title = None
+            group_series = None
+            color_series = None
         else:
             g = df_f.loc[x.index, state.group_col].astype(str)
             tmp_dict = {"x": x, "g": g}
@@ -1249,7 +1321,9 @@ class FigureGenerator:
                 tmp_dict["color"] = df_f.loc[x.index, state.color_grouping].astype(str)
             tmp = pd.DataFrame(tmp_dict).dropna(subset=["g"])
             if len(tmp) == 0:
-                return self._figure_scatter(df_f, state)
+                return self._figure_scatter(df_f, state)  # returns (dict, PlotSummary)
+            group_series = tmp["g"]
+            color_series = tmp["color"] if "color" in tmp.columns else None
             groupby_cols = ["g", "color"] if "color" in tmp.columns else ["g"]
             for key, sub in tmp.groupby(groupby_cols, sort=True):
                 group_value = key[0] if isinstance(key, tuple) else key
@@ -1299,9 +1373,14 @@ class FigureGenerator:
         if legend_title:
             layout["legend_title_text"] = legend_title
         fig.update_layout(**layout)
-        return fig.to_dict()
+        summary = build_cumulative_histogram_summary(
+            state, x, group_series, color_series,
+            state.group_col, state.color_grouping,
+            n_bins=n_bins,
+        )
+        return fig.to_dict(), summary
 
-    def _figure_histogram(self, df_f: pd.DataFrame, state: PlotState) -> dict:
+    def _figure_histogram(self, df_f: pd.DataFrame, state: PlotState) -> Tuple[dict, PlotSummary]:
         """Create histogram of x column (with optional abs): one hist when group is (none), else one trace per group."""
         x = self.data_processor.get_x_values(
             df_f, state.xcol, state.use_absolute_value,
@@ -1309,9 +1388,10 @@ class FigureGenerator:
         ).dropna()
         if len(x) == 0:
             logger.warning("No valid data for histogram. Falling back to scatter plot.")
-            return self._figure_scatter(df_f, state)
+            return self._figure_scatter(df_f, state)  # returns (dict, PlotSummary)
 
         fig = go.Figure()
+        group_series = None
 
         if not state.group_col:
             fig.add_trace(go.Histogram(
@@ -1325,7 +1405,8 @@ class FigureGenerator:
             g = df_f.loc[x.index, state.group_col].astype(str)
             tmp = pd.DataFrame({"x": x, "g": g}).dropna(subset=["g"])
             if len(tmp) == 0:
-                return self._figure_scatter(df_f, state)
+                return self._figure_scatter(df_f, state)  # returns (dict, PlotSummary)
+            group_series = tmp["g"]
             for group_value, sub in tmp.groupby("g", sort=True):
                 fig.add_trace(go.Histogram(
                     x=sub["x"].values,
@@ -1347,4 +1428,7 @@ class FigureGenerator:
         if legend_title:
             layout["legend_title_text"] = legend_title
         fig.update_layout(**layout)
-        return fig.to_dict()
+        summary = build_histogram_summary(
+            state, x, group_series, state.group_col, n_bins=state.histogram_bins
+        )
+        return fig.to_dict(), summary

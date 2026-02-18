@@ -351,7 +351,7 @@ def _(
     )
 
     df_f = data_processor.filter_by_pre_filters(state.pre_filter)
-    fig_dict = figure_generator.make_figure(df_f, state)
+    fig_dict, _ = figure_generator.make_figure(df_f, state)
     fig = go.Figure(fig_dict)
     return df_f, fig
 

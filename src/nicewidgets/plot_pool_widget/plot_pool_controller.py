@@ -19,7 +19,7 @@ from nicegui.events import GenericEventArguments
 from nicewidgets.utils.clipboard import copy_to_clipboard
 from nicewidgets.utils.logging import get_logger
 from nicewidgets.plot_pool_widget.plot_state import PlotType, PlotState
-from nicewidgets.plot_pool_widget.algorithms.swarm_stats import swarm_report_from_state
+from nicewidgets.plot_pool_widget.plot_summary import PlotSummary, format_plot_summary_to_str
 from nicewidgets.plot_pool_widget.plot_helpers import numeric_columns, is_categorical_column
 from nicewidgets.plot_pool_widget.dataframe_processor import DataFrameProcessor
 from nicewidgets.plot_pool_widget.figure_generator import FigureGenerator
@@ -240,6 +240,9 @@ class PlotPoolController:
         # row_id -> iloc index within CURRENT filtered df (rebuilt each replot)
         self._id_to_index_filtered: dict[str, int] = {}
 
+        # Plot summaries per slot (length 4 for max 2x2 layout); set after each make_figure
+        self._plot_summaries: list[Optional[PlotSummary]] = [None] * 4
+
         # Linked selection (owned by handler; controller uses get_selected_row_ids())
         self._selection_handler = PlotSelectionHandler(
             data_processor=self.data_processor,
@@ -294,6 +297,7 @@ class PlotPoolController:
             self.data_processor,
             unique_row_id_col=self.unique_row_id_col,
         )
+        self._plot_summaries = [None] * 4
         self._selection_handler = PlotSelectionHandler(
             data_processor=self.data_processor,
             figure_generator=self.figure_generator,
@@ -569,7 +573,7 @@ class PlotPoolController:
             with self._plot_container:
                 with ui.column().classes("w-full h-full min-h-0 p-4"):
                     plot = ui.plotly(
-                        self._make_figure_dict(self.plot_states[0], selected_row_ids=None)
+                        self._make_figure_dict(self.plot_states[0], selected_row_ids=None, plot_index=0)
                     ).classes("w-full h-full")
                     plot.on("plotly_click", lambda e, idx=0: self._on_plotly_click(e, plot_index=idx))
                     if is_selection_compatible(self.plot_states[0].plot_type):
@@ -588,7 +592,7 @@ class PlotPoolController:
                     for i in range(2):
                         with ui.column().classes("flex-1 w-0 h-full min-h-0 p-4"):
                             plot = ui.plotly(
-                                self._make_figure_dict(self.plot_states[i], selected_row_ids=None)
+                                self._make_figure_dict(self.plot_states[i], selected_row_ids=None, plot_index=i)
                             ).classes("w-full h-full")
                             plot.on("plotly_click", lambda e, idx=i: self._on_plotly_click(e, plot_index=idx))
                             if is_selection_compatible(self.plot_states[i].plot_type):
@@ -607,7 +611,7 @@ class PlotPoolController:
                     for i in range(2):
                         with ui.column().classes("w-full flex-1 min-h-0 p-4"):
                             plot = ui.plotly(
-                                self._make_figure_dict(self.plot_states[i], selected_row_ids=None)
+                                self._make_figure_dict(self.plot_states[i], selected_row_ids=None, plot_index=i)
                             ).classes("w-full h-full")
                             plot.on("plotly_click", lambda e, idx=i: self._on_plotly_click(e, plot_index=idx))
                             if is_selection_compatible(self.plot_states[i].plot_type):
@@ -629,7 +633,7 @@ class PlotPoolController:
                                 plot_idx = row_idx * 2 + col_idx
                                 with ui.column().classes("flex-1 w-0 h-full min-h-0 p-4"):
                                     plot = ui.plotly(
-                                        self._make_figure_dict(self.plot_states[plot_idx], selected_row_ids=None)
+                                        self._make_figure_dict(self.plot_states[plot_idx], selected_row_ids=None, plot_index=plot_idx)
                                     ).classes("w-full h-full")
                                     plot.on("plotly_click", lambda e, idx=plot_idx: self._on_plotly_click(e, plot_index=idx))
                                     if is_selection_compatible(self.plot_states[plot_idx].plot_type):
@@ -650,23 +654,22 @@ class PlotPoolController:
     # ----------------------------
 
     def _copy_report_for_plot(self, plot_index: int) -> None:
-        """Generate swarm report for the given plot and copy to clipboard."""
+        """Format current plot summary as text, copy to clipboard, and print to console."""
         if plot_index < 0 or plot_index >= len(self.plot_states):
             ui.notify(f"Invalid plot index {plot_index}", type="warning")
             return
+        summary = self._plot_summaries[plot_index] if plot_index < len(self._plot_summaries) else None
+        if summary is None:
+            ui.notify("No summary for this plot. Replot to generate one.", type="warning")
+            return
         try:
-            report = swarm_report_from_state(
-                self.df,
-                self.plot_states[plot_index],
-                unique_row_id_col=self.unique_row_id_col,
-                pre_filter_columns=self.pre_filter_columns,
-            )
-            copy_to_clipboard(report)
+            text = format_plot_summary_to_str(summary)
+            copy_to_clipboard(text)
             plot_type = self.plot_states[plot_index].plot_type.value
-            ui.notify(f"Data report copied to clipboard for {plot_type} {plot_index + 1}", type="positive")
+            ui.notify(f"Plot summary copied to clipboard for {plot_type} plot {plot_index + 1}", type="positive")
         except Exception as ex:
-            logger.exception("Failed to copy data report")
-            ui.notify(f"Could not generate report: {ex}", type="negative")
+            logger.exception("Failed to copy plot summary")
+            ui.notify(f"Could not format summary: {ex}", type="negative")
 
     def _on_splitter_change(self, e=None) -> None:
         """Restore plot panel after splitter resize (avoids 1x2/2x1 collapsing to single plot). Persist splitter value."""
@@ -1004,7 +1007,7 @@ class PlotPoolController:
                 break
             if not is_selection_compatible(self.plot_states[i].plot_type):
                 continue
-            fig_dict = self._make_figure_dict(self.plot_states[i], selected_row_ids=selected)
+            fig_dict = self._make_figure_dict(self.plot_states[i], selected_row_ids=selected, plot_index=i)
             self._plots[i].update_figure(fig_dict)
             self._plots[i].update()
 
@@ -1133,7 +1136,7 @@ class PlotPoolController:
         for i in range(min(num_plots, len(self._plots), len(self.plot_states))):
             state = self.plot_states[i]
             self._plots[i].update_figure(
-                self._make_figure_dict(state, selected_row_ids=selected or None)
+                self._make_figure_dict(state, selected_row_ids=selected or None, plot_index=i)
             )
 
     def _make_figure_dict(
@@ -1141,22 +1144,27 @@ class PlotPoolController:
         state: PlotState,
         *,
         selected_row_ids: Optional[set[str]] = None,
+        plot_index: Optional[int] = None,
     ) -> dict:
         """Generate Plotly figure dictionary based on plot state.
-        
+
         Args:
             state: PlotState to use for generating the figure.
             selected_row_ids: If set, these row_ids are shown as selected (linked selection).
-            
+            plot_index: If set, store the plot summary in _plot_summaries[plot_index]. If None, use current_plot_index.
+
         Returns:
             Plotly figure dictionary.
         """
         df_f = self._get_filtered_df(state)
         self._id_to_index_filtered = self.data_processor.build_row_id_index(df_f)
-        
+
         logger.debug(f"Making figure: plot_type={state.plot_type.value}, filtered_rows={len(df_f)}")
-        figure_dict = self.figure_generator.make_figure(
+        figure_dict, summary = self.figure_generator.make_figure(
             df_f, state, selected_row_ids=selected_row_ids or self._selection_handler.get_selected_row_ids() or None
         )
         logger.debug(f"Figure generated: {len(figure_dict.get('data', []))} traces")
+        idx = plot_index if plot_index is not None else self.current_plot_index
+        if 0 <= idx < len(self._plot_summaries):
+            self._plot_summaries[idx] = summary
         return figure_dict

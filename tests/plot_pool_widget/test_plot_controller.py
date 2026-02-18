@@ -57,7 +57,7 @@ def test_scatter_plot_basic(plot_controller, sample_dataframe):
     df_f = plot_controller.data_processor.filter_by_pre_filters(state.pre_filter)
 
     # Generate figure
-    figure_dict = plot_controller.figure_generator.make_figure(df_f, state)
+    figure_dict, _ = plot_controller.figure_generator.make_figure(df_f, state)
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
@@ -75,7 +75,7 @@ def test_scatter_plot_with_grouping(plot_controller, sample_dataframe):
     plot_controller.plot_states[0] = state
 
     df_f = plot_controller.data_processor.filter_by_pre_filters(state.pre_filter)
-    figure_dict = plot_controller.figure_generator.make_figure(df_f, state)
+    figure_dict, _ = plot_controller.figure_generator.make_figure(df_f, state)
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
@@ -93,7 +93,7 @@ def test_box_plot_basic(plot_controller, sample_dataframe):
     plot_controller.plot_states[0] = state
 
     df_f = plot_controller.data_processor.filter_by_pre_filters(state.pre_filter)
-    figure_dict = plot_controller.figure_generator.make_figure(df_f, state)
+    figure_dict, _ = plot_controller.figure_generator.make_figure(df_f, state)
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
@@ -112,7 +112,7 @@ def test_box_plot_with_nesting(plot_controller, sample_dataframe):
     plot_controller.plot_states[0] = state
 
     df_f = plot_controller.data_processor.filter_by_pre_filters(state.pre_filter)
-    figure_dict = plot_controller.figure_generator.make_figure(df_f, state)
+    figure_dict, _ = plot_controller.figure_generator.make_figure(df_f, state)
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
@@ -130,7 +130,7 @@ def test_violin_plot_basic(plot_controller, sample_dataframe):
     plot_controller.plot_states[0] = state
 
     df_f = plot_controller.data_processor.filter_by_pre_filters(state.pre_filter)
-    figure_dict = plot_controller.figure_generator.make_figure(df_f, state)
+    figure_dict, _ = plot_controller.figure_generator.make_figure(df_f, state)
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
@@ -149,7 +149,7 @@ def test_violin_plot_with_nesting(plot_controller, sample_dataframe):
     plot_controller.plot_states[0] = state
 
     df_f = plot_controller.data_processor.filter_by_pre_filters(state.pre_filter)
-    figure_dict = plot_controller.figure_generator.make_figure(df_f, state)
+    figure_dict, _ = plot_controller.figure_generator.make_figure(df_f, state)
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
@@ -167,7 +167,7 @@ def test_swarm_plot_basic(plot_controller, sample_dataframe):
     plot_controller.plot_states[0] = state
 
     df_f = plot_controller.data_processor.filter_by_pre_filters(state.pre_filter)
-    figure_dict = plot_controller.figure_generator.make_figure(df_f, state)
+    figure_dict, _ = plot_controller.figure_generator.make_figure(df_f, state)
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
@@ -186,7 +186,7 @@ def test_swarm_plot_with_nesting(plot_controller, sample_dataframe):
     plot_controller.plot_states[0] = state
 
     df_f = plot_controller.data_processor.filter_by_pre_filters(state.pre_filter)
-    figure_dict = plot_controller.figure_generator.make_figure(df_f, state)
+    figure_dict, _ = plot_controller.figure_generator.make_figure(df_f, state)
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
@@ -203,7 +203,7 @@ def test_histogram_plot_basic(plot_controller, sample_dataframe):
     plot_controller.plot_states[0] = state
 
     df_f = plot_controller.data_processor.filter_by_pre_filters(state.pre_filter)
-    figure_dict = plot_controller.figure_generator.make_figure(df_f, state)
+    figure_dict, _ = plot_controller.figure_generator.make_figure(df_f, state)
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
@@ -220,7 +220,7 @@ def test_cumulative_histogram_plot_basic(plot_controller, sample_dataframe):
     plot_controller.plot_states[0] = state
 
     df_f = plot_controller.data_processor.filter_by_pre_filters(state.pre_filter)
-    figure_dict = plot_controller.figure_generator.make_figure(df_f, state)
+    figure_dict, _ = plot_controller.figure_generator.make_figure(df_f, state)
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
@@ -240,7 +240,7 @@ def test_plot_with_prefilters(plot_controller, sample_dataframe):
     plot_controller.plot_states[0] = state
 
     df_f = plot_controller.data_processor.filter_by_pre_filters(state.pre_filter)
-    figure_dict = plot_controller.figure_generator.make_figure(df_f, state)
+    figure_dict, _ = plot_controller.figure_generator.make_figure(df_f, state)
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
@@ -261,7 +261,7 @@ def test_plot_with_mean_std(plot_controller, sample_dataframe):
     plot_controller.plot_states[0] = state
 
     df_f = plot_controller.data_processor.filter_by_pre_filters(state.pre_filter)
-    figure_dict = plot_controller.figure_generator.make_figure(df_f, state)
+    figure_dict, _ = plot_controller.figure_generator.make_figure(df_f, state)
 
     assert "data" in figure_dict
     assert len(figure_dict["data"]) > 0
