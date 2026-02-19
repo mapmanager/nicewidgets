@@ -90,6 +90,13 @@ _RADON_DEFAULT_PLOT_STATE = PlotState(
     remove_values_threshold=10000.0,
 )
 
+_KYM_EVENT_CONFIG = PlotPoolConfig(
+    pre_filter_columns=["roi_id"],
+    unique_row_id_col="_unique_row_id",
+    db_type="kym_event_db",
+    app_name="nicewidgets",
+)
+
 _CSV_SCHEMA: dict[str, PlotPoolConfig] = {
     "radon_report_db.csv": PlotPoolConfig(
         pre_filter_columns=["roi_id", "accepted"],
@@ -98,10 +105,6 @@ _CSV_SCHEMA: dict[str, PlotPoolConfig] = {
         app_name="nicewidgets",
         plot_state=_RADON_DEFAULT_PLOT_STATE,
     ),
-    "kym_event_report.csv": PlotPoolConfig(
-        pre_filter_columns=["roi_id"],
-            unique_row_id_col="_unique_row_id",
-        db_type="kym_event_db",
-        app_name="nicewidgets",
-    ),
+    "kym_event_report.csv": _KYM_EVENT_CONFIG,
+    "kym_event_db.csv": _KYM_EVENT_CONFIG,
 }

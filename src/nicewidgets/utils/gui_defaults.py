@@ -21,7 +21,7 @@ def setUpGuiDefaults(text_size: str = 'text-base'):
                    'text-base', 'text-lg'). Defaults to 'text-base'.
     """
     
-    logger.info('setting default_classes() and default_props()to specify style of all ui elements')
+    # logger.info('setting default_classes() and default_props()to specify style of all ui elements')
     
     # map tailwind to quasar size
     text_size_quasar = {
@@ -31,7 +31,7 @@ def setUpGuiDefaults(text_size: str = 'text-base'):
         "text-lg": "lg",
     }[text_size]
 
-    logger.debug(f'=== using text_size:"{text_size}" text_size_quasar:{text_size_quasar}')
+    logger.debug(f'using classes text_size:"{text_size}" text_size_quasar:{text_size_quasar}')
 
     ui.label.default_classes(f"{text_size} select-text")  #  select-text allows double-click selection
     ui.label.default_props("dense")

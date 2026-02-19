@@ -45,36 +45,36 @@ def test_get_data_csv_files_returns_sorted_list():
 
 
 def test_get_data_csv_files_includes_known_files():
-    """get_data_csv_files includes radon_report_db and kym_event_report when data dir exists."""
+    """get_data_csv_files includes radon_report_db and kym_event_db when data dir exists."""
     data_dir = get_data_dir()
     if not data_dir.exists():
         pytest.skip("nicewidgets/data not found (run from repo with data)")
     files = get_data_csv_files()
     assert "radon_report_db.csv" in files
-    assert "kym_event_report.csv" in files
+    assert "kym_event_db.csv" in files
 
 
 def test_load_csv_for_file_radon_adds_unique_row_id():
-    """load_csv_for_file adds unique_row_id for radon_report_db.csv."""
+    """load_csv_for_file adds _unique_row_id for radon_report_db.csv if not present."""
     data_dir = get_data_dir()
     if not (data_dir / "radon_report_db.csv").exists():
         pytest.skip("radon_report_db.csv not found")
     df = load_csv_for_file("radon_report_db.csv")
-    assert "unique_row_id" in df.columns
-    assert df["unique_row_id"].dtype == object
+    assert "_unique_row_id" in df.columns
+    assert df["_unique_row_id"].dtype == object
     # Check format: path|roi_id
-    sample = df["unique_row_id"].iloc[0]
+    sample = df["_unique_row_id"].iloc[0]
     assert "|" in str(sample)
 
 
 def test_load_csv_for_file_kym_event_keeps_unique_row_id():
-    """load_csv_for_file does not add unique_row_id for kym_event_report (has _unique_row_id)."""
+    """load_csv_for_file has _unique_row_id for kym_event_db (from file or path|roi_id)."""
     data_dir = get_data_dir()
-    if not (data_dir / "kym_event_report.csv").exists():
-        pytest.skip("kym_event_report.csv not found")
-    df = load_csv_for_file("kym_event_report.csv")
+    if not (data_dir / "kym_event_db.csv").exists():
+        pytest.skip("kym_event_db.csv not found")
+    df = load_csv_for_file("kym_event_db.csv")
     assert "_unique_row_id" in df.columns
-    # Should NOT add unique_row_id (_unique_row_id is already the unique id)
+    # Should NOT add unique_row_id (schema uses _unique_row_id)
     assert "unique_row_id" not in df.columns
 
 
@@ -87,15 +87,15 @@ def test_load_csv_for_file_missing_raises():
 def test_get_config_for_csv_radon():
     """get_config_for_csv returns correct config for radon_report_db.csv."""
     cfg = get_config_for_csv("radon_report_db.csv")
-    assert cfg.pre_filter_columns == ["roi_id"]
-    assert cfg.unique_row_id_col == "unique_row_id"
+    assert cfg.pre_filter_columns == ["roi_id", "accepted"]
+    assert cfg.unique_row_id_col == "_unique_row_id"
     assert cfg.db_type == "radon_db"
     assert cfg.app_name == "nicewidgets"
 
 
 def test_get_config_for_csv_kym_event():
-    """get_config_for_csv returns correct config for kym_event_report.csv."""
-    cfg = get_config_for_csv("kym_event_report.csv")
+    """get_config_for_csv returns correct config for kym_event_db.csv."""
+    cfg = get_config_for_csv("kym_event_db.csv")
     assert cfg.pre_filter_columns == ["roi_id"]
     assert cfg.unique_row_id_col == "_unique_row_id"
     assert cfg.db_type == "kym_event_db"
@@ -106,6 +106,6 @@ def test_get_config_for_csv_unknown_returns_fallback():
     """get_config_for_csv returns generic fallback for unknown filenames."""
     cfg = get_config_for_csv("unknown.csv")
     assert cfg.pre_filter_columns == ["roi_id"]
-    assert cfg.unique_row_id_col == "unique_row_id"
+    assert cfg.unique_row_id_col == "_unique_row_id"
     assert cfg.db_type == "default"
     assert cfg.app_name == "nicewidgets"

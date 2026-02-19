@@ -98,7 +98,7 @@ class GridConfig:
     row_id_field: Optional[str] = None
 
     show_row_index: bool = False
-    row_index_header: str = "XXX"
+    row_index_header: str = "Idx"
     row_index_width: int = 50  # need 60 to fit index >= 100
     row_index_resizable: bool = True
 

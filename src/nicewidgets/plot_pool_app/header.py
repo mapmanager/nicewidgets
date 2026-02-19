@@ -50,8 +50,14 @@ def build_plot_pool_header(
         app.storage.user[THEME_STORAGE_KEY] = dark_mode.value
         _update_theme_icon()
 
-    with ui.header().classes("items-center justify-between"):
-        with ui.row().classes("items-center gap-4"):
+    # with ui.header().classes("items-center justify-between"):
+
+    with ui.header().classes("items-center justify-between").props("dense").style(
+        "min-height: 36px; height: 36px; padding: 0 8px;"
+    ):
+
+
+        with ui.row().classes("items-center gap-2"):
             ui.label("Plot Pool").classes("!text-lg font-bold italic text-white")
 
         with ui.row().classes("items-center gap-2"):

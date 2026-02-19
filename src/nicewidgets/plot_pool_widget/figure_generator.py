@@ -87,11 +87,11 @@ class FigureGenerator:
         Returns:
             Tuple of (Plotly figure dictionary, PlotSummary).
         """
-        logger.info(
-            f"FigureGenerator.make_figure: plot_type={state.plot_type.value}, "
-            f"filtered_rows={len(df_f)}, pre_filter={state.pre_filter}, "
-            f"xcol={state.xcol}, ycol={state.ycol}"
-        )
+        # logger.info(
+        #     f"FigureGenerator.make_figure: plot_type={state.plot_type.value}, "
+        #     f"filtered_rows={len(df_f)}, pre_filter={state.pre_filter}, "
+        #     f"xcol={state.xcol}, ycol={state.ycol}"
+        # )
 
         if state.plot_type == PlotType.GROUPED:
             fig_dict, summary = self._figure_grouped(df_f, state)
@@ -131,7 +131,7 @@ class FigureGenerator:
         else:
             fig_dict, summary = self._figure_split_scatter(df_f, state, selected_row_ids=selected_row_ids)
 
-        logger.debug(f"Figure generated: {len(fig_dict.get('data', []))} traces")
+        # logger.debug(f"Figure generated: {len(fig_dict.get('data', []))} traces")
         return fig_dict, summary
 
     def _compute_swarm_x_jitter(

@@ -27,7 +27,7 @@ from nicewidgets.plot_pool_widget.plot_pool_controller import PlotPoolController
 
 logger = get_logger(__name__)
 
-setup_logging(level="INFO")
+setup_logging(level="DEBUG")
 
 STORAGE_SECRET = "nicewidgets-plot-pool-session-secret"
 
@@ -88,7 +88,8 @@ def configure_native_window_args() -> None:
 def home() -> None:
     """Home page: header, toolbar, PlotPoolController (no disclosure triangle)."""
 
-    setUpGuiDefaults()
+    setUpGuiDefaults('text-xs')
+    
     ui.page_title("Plot Pool")
 
     header.build_plot_pool_header()

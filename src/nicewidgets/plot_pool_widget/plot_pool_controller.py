@@ -198,7 +198,7 @@ class PlotPoolController:
 
         if loaded_plot_states:
             config_name = str(self._config_path) if self._config_path is not None else self._config_filename()
-            logger.info(f"Loaded {len(loaded_plot_states)} plot state(s) and layout '{loaded_layout}' from {config_name}")
+            # logger.info(f"Loaded {len(loaded_plot_states)} plot state(s) and layout '{loaded_layout}' from {config_name}")
             # Validate loaded states against current df columns and apply fallbacks
             validated = [self._validate_plot_state_columns(ps) for ps in loaded_plot_states]
             # Use loaded layout
@@ -214,7 +214,7 @@ class PlotPoolController:
             # Update stored default to match first loaded state
             self.default_plot_state = PlotState.from_dict(self.plot_states[0].to_dict())
         else:
-            logger.info("No saved plot config found, using provided/default plot state")
+            logger.warning("No saved plot config found, using provided/default plot state")
             self.layout = "1x1"
             # Initialize with 4 plot states to support 2x2 layout
             self.plot_states = [
@@ -814,7 +814,7 @@ class PlotPoolController:
         Args:
             layout_str: Layout string like "1x1", "1x2", "2x1", "2x2".
         """
-        logger.info(f"Layout changed to: {layout_str}")
+        # logger.info(f"Layout changed to: {layout_str}")
         # Save current plot state before changing layout
         self.plot_states[self.current_plot_index] = self._widgets_to_state()
         
@@ -847,7 +847,7 @@ class PlotPoolController:
         Args:
             plot_index: Index of plot to switch to (0-based).
         """
-        logger.info(f"Switching to plot {plot_index + 1}")
+        # logger.info(f"Switching to plot {plot_index + 1}")
         # Save current plot state
         self.plot_states[self.current_plot_index] = self._widgets_to_state()
         # Update current index
@@ -857,7 +857,7 @@ class PlotPoolController:
     
     def _apply_current_to_others(self) -> None:
         """Apply current plot's state to all other plots."""
-        logger.info("Applying current plot state to all other plots")
+        # logger.info("Applying current plot state to all other plots")
         # Get current state from widgets
         current_state = self._widgets_to_state()
         self.plot_states[self.current_plot_index] = current_state
@@ -894,7 +894,7 @@ class PlotPoolController:
 
     def _reset_to_default(self) -> None:
         """Reset all plots to the default plot state."""
-        logger.info("Resetting all plots to default state")
+        # logger.info("Resetting all plots to default state")
         # Apply default state to all plots
         for i in range(len(self.plot_states)):
             self.plot_states[i] = PlotState.from_dict(self.default_plot_state.to_dict())
@@ -915,7 +915,7 @@ class PlotPoolController:
         column_name = str(column_name)
         # Box/Violin/Swarm don't use xcol for x-axis (they use group_col), so no validation needed here
         # X column selection is still allowed but won't affect these plot types
-        logger.info(f"X column selected: {column_name}")
+        # logger.info(f"X column selected: {column_name}")
         self.plot_states[self.current_plot_index].xcol = column_name
         self._on_any_change()
 
@@ -923,7 +923,7 @@ class PlotPoolController:
         """Callback when Y column is selected in aggrid."""
         column_name = row_dict.get("column")
         if column_name:
-            logger.info(f"Y column selected: {column_name}")
+            # logger.info(f"Y column selected: {column_name}")
             self.plot_states[self.current_plot_index].ycol = str(column_name)
             self._on_any_change()
         else:
@@ -933,7 +933,7 @@ class PlotPoolController:
         """Handle changes to any control widget and trigger replot."""
         if self._control_panel is None:
             return
-        logger.info("Control change detected, updating state and replotting")
+        # logger.info("Control change detected, updating state and replotting")
         new_state = self._widgets_to_state()
         new_state.xcol = self.plot_states[self.current_plot_index].xcol
         new_state.ycol = self.plot_states[self.current_plot_index].ycol
@@ -1097,22 +1097,22 @@ class PlotPoolController:
             self._last_plot_type != state.plot_type
         )
         
-        logger.info(
-            f"Replotting plot {self.current_plot_index + 1} - "
-            f"plot_type={state.plot_type.value}, pre_filter={state.pre_filter}, "
-            f"xcol={state.xcol}, ycol={state.ycol}, group_col={state.group_col}, "
-            f"show_raw={state.show_raw}, show_legend={state.show_legend}, "
-            f"plot_type_changed={plot_type_changed}"
-        )
+        # logger.info(
+        #     f"Replotting plot {self.current_plot_index + 1} - "
+        #     f"plot_type={state.plot_type.value}, pre_filter={state.pre_filter}, "
+        #     f"xcol={state.xcol}, ycol={state.ycol}, group_col={state.group_col}, "
+        #     f"show_raw={state.show_raw}, show_legend={state.show_legend}, "
+        #     f"plot_type_changed={plot_type_changed}"
+        # )
         
         try:
             figure_dict = self._make_figure_dict(state)
-            logger.info(f"Figure dict created successfully with {len(figure_dict.get('data', []))} traces")
+            # logger.info(f"Figure dict created successfully with {len(figure_dict.get('data', []))} traces")
             
             # If plot type changed, force a full rebuild of the plot panel
             # This is necessary because update_figure() can be unreliable when plot structure changes significantly
             if plot_type_changed:
-                logger.info(f"Plot type changed from {self._last_plot_type.value} to {state.plot_type.value}, forcing full rebuild")
+                # logger.info(f"Plot type changed from {self._last_plot_type.value} to {state.plot_type.value}, forcing full rebuild")
                 self._rebuild_plot_panel()
             else:
                 # Normal update - just update the figure
@@ -1123,7 +1123,7 @@ class PlotPoolController:
             # Update last plot type
             self._last_plot_type = state.plot_type
             
-            logger.info(f"Plot {self.current_plot_index + 1} updated successfully")
+            # logger.info(f"Plot {self.current_plot_index + 1} updated successfully")
         except Exception as ex:
             logger.exception(f"Error replotting plot {self.current_plot_index + 1}: {ex}")
     
@@ -1159,11 +1159,11 @@ class PlotPoolController:
         df_f = self._get_filtered_df(state)
         self._id_to_index_filtered = self.data_processor.build_row_id_index(df_f)
 
-        logger.debug(f"Making figure: plot_type={state.plot_type.value}, filtered_rows={len(df_f)}")
+        # logger.debug(f"Making figure: plot_type={state.plot_type.value}, filtered_rows={len(df_f)}")
         figure_dict, summary = self.figure_generator.make_figure(
             df_f, state, selected_row_ids=selected_row_ids or self._selection_handler.get_selected_row_ids() or None
         )
-        logger.debug(f"Figure generated: {len(figure_dict.get('data', []))} traces")
+        # logger.debug(f"Figure generated: {len(figure_dict.get('data', []))} traces")
         idx = plot_index if plot_index is not None else self.current_plot_index
         if 0 <= idx < len(self._plot_summaries):
             self._plot_summaries[idx] = summary

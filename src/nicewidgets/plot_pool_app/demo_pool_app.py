@@ -18,6 +18,7 @@ from nicewidgets.plot_pool_widget.lazy_section import LazySectionConfig
 
 from nicewidgets.utils.logging import setup_logging
 
+setup_logging(level="DEBUG")
 
 # ----------------------------
 # Demo entrypoint
@@ -30,7 +31,7 @@ def main() -> None:
     Pattern 2: Lazy usage - renders only when expansion is opened
     """
 
-    setup_logging(level="INFO")
+    # setup_logging(level="INFO")
 
     path = '/Users/cudmore/Dropbox/data/declan/2026/compare-condiitons/v2-analysis/radon_report.csv'
 
@@ -43,7 +44,7 @@ def main() -> None:
 
     df = load_csv_and_build_df()
 
-    setUpGuiDefaults()
+    setUpGuiDefaults('text-xs')
     
     ui.page_title("PlotPoolController Demo - Direct and Lazy Usage")
     
