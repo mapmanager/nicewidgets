@@ -22,10 +22,13 @@ from nicegui import app, ui
 
 from nicewidgets.utils import setUpGuiDefaults
 from nicewidgets.utils.logging import get_logger, setup_logging
-from nicewidgets.plot_pool_app import header, schema, toolbar
+from nicewidgets.plot_pool_app import header, schema
 from nicewidgets.plot_pool_widget.plot_pool_controller import PlotPoolController
 
 logger = get_logger(__name__)
+
+# Radon CSV only (no switching, no upload) for web deployment
+RADON_CSV = "radon_report_db.csv"
 
 setup_logging(level="DEBUG")
 
@@ -86,59 +89,31 @@ def configure_native_window_args() -> None:
 
 @ui.page("/")
 def home() -> None:
-    """Home page: header, toolbar, PlotPoolController (no disclosure triangle)."""
+    """Home page: header + PlotPoolController with radon data only (no CSV switching)."""
 
     setUpGuiDefaults('text-xs')
-    
+
     ui.page_title("Plot Pool")
 
     header.build_plot_pool_header()
 
-    csv_files = schema.get_data_csv_files()
-    default_csv = (
-        schema.DEFAULT_CSV
-        if schema.DEFAULT_CSV in csv_files
-        else (csv_files[0] if csv_files else None)
-    )
-
     with ui.column().classes("w-full h-screen flex flex-col gap-4 p-4"):
-        def _on_csv_selected(filename: str) -> None:
-            if not filename or filename == "(no CSV files)":
-                return
-            try:
-                df = schema.load_csv_for_file(filename)
-                cfg = schema.get_config_for_csv(filename)
-                main_container.clear()
-                with main_container:
-                    ctrl = PlotPoolController(df, config=cfg)
-                    ctrl.build(container=main_container)
-            except FileNotFoundError as e:
-                logger.warning("CSV not found: %s", e)
-                ui.notify(str(e), type="warning")
-            except Exception as e:
-                logger.exception("Failed to load CSV: %s", e)
-                ui.notify(f"Failed to load: {e}", type="negative")
-
-        def _on_open_click() -> None:
-            ui.notify("Open: coming soon", type="info")
-
-        def _on_upload_click() -> None:
-            ui.notify("Upload: coming soon", type="info")
-
-        toolbar.build_toolbar(
-            csv_options=csv_files,
-            default_csv=default_csv,
-            on_csv_selected=_on_csv_selected,
-            on_open_click=_on_open_click,
-            on_upload_click=_on_upload_click,
-        )
-
         main_container = ui.column().classes("w-full flex-1 min-h-0 overflow-auto")
 
-        if default_csv:
-            _on_csv_selected(default_csv)
-        elif csv_files:
-            _on_csv_selected(csv_files[0])
+        try:
+            df = schema.load_csv_for_file(RADON_CSV)
+            cfg = schema.get_config_for_csv(RADON_CSV)
+            ctrl = PlotPoolController(df, config=cfg)
+            ctrl.build(container=main_container)
+        except FileNotFoundError:
+            with main_container:
+                ui.label(f"{RADON_CSV} not found in data directory.").classes(
+                    "text-negative"
+                )
+        except Exception as e:
+            logger.exception("Failed to load %s: %s", RADON_CSV, e)
+            with main_container:
+                ui.label(f"Failed to load: {e}").classes("text-negative")
 
 
 # ---------------------------------------------------------------------------
