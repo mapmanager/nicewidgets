@@ -1,0 +1,1 @@
+roi_id,rel_path,parent_folder,grandparent_folder,event_type,i_start,i_peak,i_end,t_start,t_peak,t_end,score_peak,baseline_before,baseline_after,strength,nan_fraction_in_event,n_valid_in_event,duration_sec,machine_type,user_type,note,accepted,_unique_row_id,path
