@@ -136,7 +136,8 @@ def main() -> None:
         rows=[],
     ).classes("w-full")
 
-    ui.run(native=False, reload=False)
+    _native = True
+    ui.run(native=_native, reload=False)
 
 
 if __name__ == "__main__":
