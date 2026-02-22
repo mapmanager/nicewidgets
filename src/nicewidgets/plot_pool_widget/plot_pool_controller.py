@@ -25,7 +25,7 @@ from nicewidgets.plot_pool_widget.dataframe_processor import DataFrameProcessor
 from nicewidgets.plot_pool_widget.figure_generator import FigureGenerator
 from nicewidgets.plot_pool_widget.pool_control_panel import PoolControlPanel
 from nicewidgets.plot_pool_widget.selection_handler import PlotSelectionHandler, is_selection_compatible
-from nicewidgets.plot_pool_widget.lazy_section import LazySection, LazySectionConfig
+from nicewidgets.utils.lazy_section import LazySection, LazySectionConfig
 from nicewidgets.plot_pool_widget.dataframe_table_view import DataFrameTableView
 from nicewidgets.plot_pool_widget.pre_filter_conventions import (
     PRE_FILTER_NONE,

@@ -19,8 +19,11 @@ automatically handled by the parent application's configuration.
 from nicewidgets.utils.logging import get_logger, get_log_file_path, setup_logging
 
 from nicewidgets.aggrid_gold_standard.gold_standard_aggrid_v2 import gold_standard_aggrid_v2
+from nicewidgets.contrast_widget import ContrastParams, ContrastWidget
 
 __all__ = [
+    "ContrastParams",
+    "ContrastWidget",
     "get_logger",
     "get_log_file_path",
     "gold_standard_aggrid_v2",

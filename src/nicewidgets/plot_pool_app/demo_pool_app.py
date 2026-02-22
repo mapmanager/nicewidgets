@@ -14,7 +14,7 @@ from nicegui import ui
 
 from nicewidgets.utils import setUpGuiDefaults
 from nicewidgets.plot_pool_widget.plot_pool_controller import PlotPoolConfig, PlotPoolController
-from nicewidgets.plot_pool_widget.lazy_section import LazySectionConfig
+from nicewidgets.utils.lazy_section import LazySectionConfig
 
 from nicewidgets.utils.logging import setup_logging
 
