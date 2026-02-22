@@ -21,10 +21,13 @@ class LazySectionConfig:
         clear_on_close: Clear the section content when the section is closed.
             If clear_on_close=True and render_once=False, the section will rebuild on next open.
         show_spinner: Show a spinner while heavy compute is running.
+        on_clear: Optional callback invoked when content is cleared (on close).
+            Lets callers clear references to destroyed widgets.
     """
     render_once: bool = True
     clear_on_close: bool = False
     show_spinner: bool = True
+    on_clear: Optional[Callable[[], None]] = None
 
 
 class LazySection:
@@ -127,3 +130,9 @@ class LazySection:
 
         if not self._cfg.render_once:
             self._rendered = False
+
+        if self._cfg.on_clear is not None:
+            try:
+                self._cfg.on_clear()
+            except Exception:
+                pass  # Caller's cleanup must not break close
