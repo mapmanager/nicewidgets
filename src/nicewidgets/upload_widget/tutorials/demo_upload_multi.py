@@ -12,7 +12,7 @@ from pathlib import Path
 from nicegui import ui
 
 from nicewidgets.upload_widget import UploadWidget, CancelToken
-from nicewidgets.utils.logging import get_logger
+from nicewidgets.utils.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
 
@@ -33,6 +33,7 @@ async def on_paths_ready(paths: list[Path], cancel: CancelToken) -> None:
 
 
 def main() -> None:
+    configure_logging(level="INFO")
     ui.page_title("UploadWidget demo: multi-file (batch)")
     ui.label("UploadWidget demo: multi-file (batch)").classes("text-lg font-semibold")
 

@@ -12,9 +12,11 @@ import pandas as pd
 from nicegui import ui
 
 from nicewidgets.aggrid_gold_standard.gold_standard_aggrid_v2 import gold_standard_aggrid_v2
+from nicewidgets.utils.logging import configure_logging
 
 
 def main() -> None:
+    configure_logging(level="INFO")
     ui.label("gold_standard_aggrid_v2 demo").classes("text-lg font-semibold")
     ui.label(
         "Right-click → column toggle. Double-click grade/name → in-cell select dropdown."

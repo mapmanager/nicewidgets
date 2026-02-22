@@ -9,12 +9,12 @@ from typing import List, Optional
 from nicegui import run, ui
 
 from nicewidgets.upload_widget.upload_widget import CancelToken, UploadWidget
-from nicewidgets.utils.logging import get_logger, setup_logging
+from nicewidgets.utils.logging import configure_logging, get_logger
 
-# Avoid duplicated log lines if NiceGUI reloads modules or setup_logging is called elsewhere.
+# Avoid duplicated log lines if NiceGUI reloads modules or configure_logging is called elsewhere.
 _root = logging.getLogger()
 if not _root.handlers:
-    setup_logging(level="INFO")
+    configure_logging(level="INFO")
 
 logger = get_logger(__name__)
 

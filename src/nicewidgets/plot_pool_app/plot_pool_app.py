@@ -21,7 +21,7 @@ from multiprocessing import freeze_support
 from nicegui import app, ui
 
 from nicewidgets.utils import setUpGuiDefaults
-from nicewidgets.utils.logging import get_logger, setup_logging
+from nicewidgets.utils.logging import configure_logging, get_logger
 from nicewidgets.plot_pool_app import header, schema
 from nicewidgets.plot_pool_widget.plot_pool_controller import PlotPoolController
 
@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 # Radon CSV only (no switching, no upload) for web deployment
 RADON_CSV = "radon_report_db.csv"
 
-setup_logging(level="DEBUG")
+configure_logging(level="DEBUG")
 
 STORAGE_SECRET = "nicewidgets-plot-pool-session-secret"
 

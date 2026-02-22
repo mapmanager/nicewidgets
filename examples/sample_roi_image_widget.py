@@ -6,11 +6,11 @@ from scipy.ndimage import gaussian_filter
 from nicegui import ui
 
 from nicewidgets.roi_image_widget.roi_image_widget import RoiImageWidget, RoiImageConfig
-from nicewidgets.utils.logging import setup_logging
+from nicewidgets.utils.logging import configure_logging
 
 # Configure logging for this standalone example
 # Logs will go to console and to ~/nicewidgets_example.log
-setup_logging(level="DEBUG", log_file="~/nicewidgets_example.log")
+configure_logging(level="DEBUG")
 
 
 def create_demo_image(height: int = 120, width: int = 400) -> np.ndarray:

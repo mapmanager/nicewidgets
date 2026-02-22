@@ -156,17 +156,16 @@ The project uses `pyproject.toml` for all configuration:
 
 ### Logging
 
-For standalone scripts, configure logging:
+For standalone scripts/demos, configure logging:
 
 ```python
-from nicewidgets.utils.logging import setup_logging
+from nicewidgets.utils.logging import configure_logging
 
-# Console + file logging
-setup_logging(level="DEBUG", log_file="~/my_app.log")
-
-# Console only
-setup_logging(level="INFO", log_file=None)
+# Console logging (nicewidgets never writes log files)
+configure_logging(level="DEBUG")
 ```
+
+Use env var `NICEWIDGETS_LOG_LEVEL` to set level without code changes.
 
 When imported by other applications, `nicewidgets` automatically uses the parent application's logging configuration.
 

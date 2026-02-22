@@ -21,7 +21,7 @@ from nicegui import ui
 
 from nicewidgets.custom_ag_grid_v3.config import ColumnConfig, GridConfig
 from nicewidgets.custom_ag_grid_v3.custom_ag_grid_v3 import CustomAgGrid_v3, CellEditEvent
-from nicewidgets.utils.logging import get_logger, setup_logging
+from nicewidgets.utils.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
 
@@ -107,7 +107,7 @@ def build_ui() -> None:
         return
     _UI_BUILT = True
 
-    setup_logging(level="DEBUG")
+    configure_logging(level="DEBUG")
 
     ui.label("CustomAgGrid_v3 event-bus demo").classes("text-xl font-semibold")
     ui.label("This demo simulates your app: grid consumes events, never recreated.").classes("text-sm opacity-80")

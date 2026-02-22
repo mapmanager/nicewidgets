@@ -1,11 +1,13 @@
 from nicegui import ui
 
+from nicewidgets.utils.logging import configure_logging
 from custom_ag_grid.config import ColumnConfig, GridConfig
 from custom_ag_grid.grid import CustomAgGrid
 
 
 def main() -> None:
     """Minimal demo of CustomAgGrid using only list-of-dicts data."""
+    configure_logging(level="INFO")
 
     # Example rows
     rows = [

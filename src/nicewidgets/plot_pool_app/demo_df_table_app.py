@@ -16,13 +16,13 @@ from nicegui import ui
 
 from nicewidgets.plot_pool_widget.dataframe_table_view import DataFrameTableView
 from nicewidgets.utils import setUpGuiDefaults
-from nicewidgets.utils.logging import get_logger, setup_logging
+from nicewidgets.utils.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
 
 # Configure logging once at import (like kymflow.gui_v2.app). Avoids duplicate
 # handlers when the script is run in two processes (e.g. uv + NiceGUI native).
-setup_logging(level="DEBUG")
+configure_logging(level="DEBUG")
 import logging
 print('xxx xxx', len(logging.getLogger().handlers))
 

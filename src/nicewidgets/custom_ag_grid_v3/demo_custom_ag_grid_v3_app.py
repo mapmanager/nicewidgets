@@ -8,7 +8,7 @@ from nicegui import ui
 
 from nicewidgets.custom_ag_grid_v3.config import ColumnConfig, GridConfig
 from nicewidgets.custom_ag_grid_v3.custom_ag_grid_v3 import CustomAgGrid_v3
-from nicewidgets.utils.logging import get_logger, setup_logging
+from nicewidgets.utils.logging import configure_logging, get_logger
 
 
 def _make_data_a(n: int = 25) -> List[Dict[str, Any]]:
@@ -21,7 +21,7 @@ def _make_data_b(n: int = 25) -> List[Dict[str, Any]]:
 
 
 def build_ui() -> None:
-    setup_logging(level="DEBUG")
+    configure_logging(level="DEBUG")
     logger = get_logger(__name__)
 
     ui.label("CustomAgGrid_v3 demo (A/B swap + preserve column state)").classes("text-lg font-semibold")

@@ -21,6 +21,8 @@ from typing import Any, Optional
 
 from nicegui import events, ui
 
+from nicewidgets.utils.logging import configure_logging
+
 
 class AgGridEditOnDblClickPOC:
     """Minimal wrapper: row select + keyboard navigation + dblclick edit + edit-finished events."""
@@ -330,4 +332,5 @@ def index() -> None:
 
 
 if __name__ in {"__main__", "__mp_main__"}:
+    configure_logging(level="INFO")
     ui.run(reload=False)

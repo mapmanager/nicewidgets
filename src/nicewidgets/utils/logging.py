@@ -5,10 +5,12 @@ Library Logging Best Practices
 -------------------------------
 This module follows Python library logging conventions:
 
-1. **Library code should NEVER call setup_logging()** - only use get_logger(__name__).
-2. **Applications/examples CAN call setup_logging()** - to configure log output.
+1. **Library code should NEVER call configure_logging()** - only use get_logger(__name__).
+2. **Applications/examples CAN call configure_logging()** - to configure log output.
 3. When imported by an application (e.g., kymflow) that has configured logging,
    all nicewidgets logs automatically use that application's handlers.
+
+nicewidgets does NOT write any log files; it is a headless library.
 
 Example Usage
 -------------
@@ -21,12 +23,12 @@ In library code (roi_image_widget.py, grid.py, etc.):
 
 In standalone examples/scripts:
     ```python
-    from nicewidgets.utils.logging import setup_logging
-    setup_logging(level="DEBUG", log_file="~/nicewidgets.log")
+    from nicewidgets.utils.logging import configure_logging
+    configure_logging(level="DEBUG")
     ```
 
 When imported by kymflow (or any app with configured logging):
-    - No need to call setup_logging()
+    - No need to call configure_logging()
     - All logs go to the application's configured handlers
     - No conflicts or duplicate messages
 """
@@ -34,78 +36,73 @@ When imported by kymflow (or any app with configured logging):
 from __future__ import annotations
 
 import logging
-import logging.handlers
 import os
 import sys
-from pathlib import Path
 from typing import Optional, Union
 
-# Store the log file path for retrieval
-_LOG_FILE_PATH: Optional[Path] = None
+# Default format for nicewidgets logs
+DEFAULT_FMT = "%(asctime)s [%(levelname)s] %(name)s:%(lineno)d:%(funcName)s: %(message)s"
+DEFAULT_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 
-def _expand_path(path: Union[str, Path]) -> Path:
-    return Path(os.path.expanduser(str(path))).resolve()
-
-
-def setup_logging(
-    level: Union[str, int] = "INFO",
-    log_file: Optional[Union[str, Path]] = None,
-    max_bytes: int = 5_000_000,
-    backup_count: int = 5,
+def configure_logging(
+    level: Optional[Union[str, int]] = None,
+    *,
+    fmt: Optional[str] = None,
+    datefmt: Optional[str] = None,
+    force: bool = False,
 ) -> None:
     """
-    Configure root logging with console + optional rotating file handler.
+    Configure logging for the nicewidgets logger only (never root).
 
-    NOTE: Library code should NOT call this function. This is provided for
-    standalone examples and testing. When nicewidgets is imported by an
-    application, that application should configure logging.
+    Use this in standalone scripts/demos that run ui.run() to enable log output.
+    When nicewidgets is imported by an application (e.g., kymflow), that app
+    configures logging; do not call this.
+
+    nicewidgets never writes log files.
 
     Parameters
     ----------
     level:
-        Logging level for console (e.g. "DEBUG", "INFO").
-    log_file:
-        Optional path to a log file. If None, no file handler is added.
-    max_bytes:
-        Max size in bytes for rotating log file.
-    backup_count:
-        Number of rotated log files to keep.
+        Logging level (e.g. "DEBUG", "INFO"). Defaults to NICEWIDGETS_LOG_LEVEL
+        env var, or "INFO" if unset.
+    fmt:
+        Log message format. Defaults to a standard format.
+    datefmt:
+        Date format. Defaults to "%Y-%m-%d %H:%M:%S".
+    force:
+        If True, remove existing handlers before adding new ones (allows
+        reconfiguration). If False, skip if handler already present.
     """
-    # Convert string levels like "INFO" to logging.INFO
+    if level is None:
+        level = os.environ.get("NICEWIDGETS_LOG_LEVEL", "INFO")
     if isinstance(level, str):
         level = getattr(logging, level.upper(), logging.INFO)
 
-    root = logging.getLogger()
-    root.setLevel(level)
+    logger = logging.getLogger("nicewidgets")
+    logger.setLevel(level)
 
-    # -------- Formatter --------
-    fmt = "%(asctime)s [%(levelname)s] %(name)s:%(lineno)d:%(funcName)s: %(message)s"
-    datefmt = "%Y-%m-%d %H:%M:%S"
+    if fmt is None:
+        fmt = DEFAULT_FMT
+    if datefmt is None:
+        datefmt = DEFAULT_DATEFMT
+
     formatter = logging.Formatter(fmt=fmt, datefmt=datefmt)
 
-    # -------- Console handler --------
+    if force:
+        for h in logger.handlers[:]:
+            h.close()
+            logger.removeHandler(h)
+    else:
+        # Skip if we already have a StreamHandler (e.g. from previous configure_logging)
+        for h in logger.handlers:
+            if isinstance(h, logging.StreamHandler) and h.stream is sys.stderr:
+                return
+
     console = logging.StreamHandler(sys.stderr)
     console.setLevel(level)
     console.setFormatter(formatter)
-    root.addHandler(console)
-
-    # -------- File handler (optional) --------
-    global _LOG_FILE_PATH
-    if log_file is not None:
-        log_path = _expand_path(log_file)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        _LOG_FILE_PATH = log_path
-
-        file_handler = logging.handlers.RotatingFileHandler(
-            filename=log_path,
-            maxBytes=max_bytes,
-            backupCount=backup_count,
-            encoding="utf-8",
-        )
-        file_handler.setLevel(logging.DEBUG)  # capture everything to file
-        file_handler.setFormatter(formatter)
-        root.addHandler(file_handler)
+    logger.addHandler(console)
 
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
@@ -122,23 +119,3 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
     if name is None:
         name = "nicewidgets"
     return logging.getLogger(name)
-
-
-def get_log_file_path() -> Optional[Path]:
-    """
-    Get the path to the log file, if file logging is configured.
-
-    Returns
-    -------
-    Path to the log file, or None if file logging is not configured.
-
-    Examples
-    --------
-    ```python
-    log_path = get_log_file_path()
-    if log_path:
-        print(f"Logging to: {log_path}")
-    ```
-    """
-    return _LOG_FILE_PATH
-

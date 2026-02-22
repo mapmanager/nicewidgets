@@ -2,14 +2,13 @@
 
 from .gui_defaults import setUpGuiDefaults
 from .lazy_section import LazySection, LazySectionConfig
-from .logging import get_logger, get_log_file_path, setup_logging
+from .logging import configure_logging, get_logger
 
 __all__ = [
     "setUpGuiDefaults",
     "LazySection",
     "LazySectionConfig",
+    "configure_logging",
     "get_logger",
-    "get_log_file_path",
-    "setup_logging",
 ]
 

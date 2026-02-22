@@ -16,6 +16,7 @@ import numpy as np
 from nicegui import ui
 
 from nicewidgets.custom_ag_grid import CustomAgGrid, ColumnConfig, GridConfig
+from nicewidgets.utils.logging import configure_logging
 from nicewidgets.roi_image_widget import RoiImageWidget, RoiImageConfig
 
 
@@ -151,5 +152,6 @@ def index():
 
 
 if __name__ in {"__main__", "__mp_main__"}:
+    configure_logging(level="INFO")
     ui.run(port=8004, reload=True)
 
