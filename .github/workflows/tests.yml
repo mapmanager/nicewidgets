@@ -1,0 +1,66 @@
+# Copyright (c) Robert Cudmore
+#
+# File: .github/workflows/tests.yml
+#
+# Runs NiceWidgets tests on push and pull request for core and desktop
+# installation profiles. Also enforces Ruff and example compilation.
+
+name: Tests
+run-name: Tests • ${{ github.ref_name }} • ${{ github.event_name }}
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: ${{ matrix.profile }} • Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12']
+        profile: [core, desktop]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies (core)
+        if: matrix.profile == 'core'
+        run: uv sync --frozen --group dev
+
+      - name: Install dependencies (desktop)
+        if: matrix.profile == 'desktop'
+        run: uv sync --frozen --group dev --extra desktop
+
+      - name: Ruff
+        run: uv run --no-sync ruff check .
+
+      - name: Compile examples
+        run: uv run --no-sync python -m compileall -q examples
+
+      - name: Run tests with coverage (core)
+        if: matrix.profile == 'core'
+        run: |
+          uv run --no-sync pytest -ra \
+            --cov=nicewidgets \
+            --cov-report=term \
+            --cov-report=xml:coverage.xml
+
+      - name: Run tests (desktop)
+        if: matrix.profile == 'desktop'
+        run: uv run --no-sync pytest -ra
