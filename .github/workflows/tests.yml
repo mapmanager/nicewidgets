@@ -39,6 +39,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install Linux desktop clipboard dependency
+        if: matrix.profile == 'desktop'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xclip
+
       - name: Install dependencies (core)
         if: matrix.profile == 'core'
         run: uv sync --frozen --group dev
