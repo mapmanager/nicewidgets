@@ -170,7 +170,7 @@ class PlotlyRasterViewer:
     event handler (see ``examples/raster_viewer/demo_controller.py``).
 
     All coordinates in the public API are plot physical coordinates
-    (pixel index times ``dx``/``dy`` from :class:`RasterGridSpec`).
+    (pixel index times ``dx``/``dy`` from ``RasterGridSpec``).
     """
 
     def __init__(

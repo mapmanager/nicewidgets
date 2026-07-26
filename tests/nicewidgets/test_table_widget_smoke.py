@@ -18,6 +18,7 @@ from nicewidgets.table_widget.js_hooks import (
 from nicewidgets.table_widget.table_widget import (
     TableWidget,
     _get_row_id_js_expression,
+    normalize_table_theme,
     validate_row_id_field,
     validate_rows_for_row_id_field,
 )
@@ -76,6 +77,49 @@ def test_table_widget_config_defaults() -> None:
     assert cfg.group_default_expanded == 1
     assert cfg.hide_row_group_columns is True
     assert cfg.enterprise_module_url
+
+
+def test_normalize_table_theme() -> None:
+    assert normalize_table_theme('dark') == 'dark'
+    assert normalize_table_theme('DARK') == 'dark'
+    assert normalize_table_theme('light') == 'light'
+    assert normalize_table_theme('other') == 'light'
+
+
+def test_table_widget_theme_api_before_and_after_build() -> None:
+    """Theme setters should store state and apply to a built grid."""
+    table = TableWidget(
+        [ColumnDef(field='id', headerName='ID')],
+        'id',
+        [{'id': 'a'}],
+        config=TableWidgetConfig(show_index_column=False),
+    )
+    table.set_dark_mode(True)
+    assert table._theme == 'dark'
+
+    class FakeGrid:
+        def __init__(self) -> None:
+            self.props_calls: list[str] = []
+            self.updated = 0
+
+        def props(self, value: str) -> None:
+            self.props_calls.append(value)
+
+        def update(self) -> None:
+            self.updated += 1
+
+        def classes(self, *args: object, **kwargs: object) -> FakeGrid:
+            return self
+
+        def style(self, *args: object, **kwargs: object) -> FakeGrid:
+            return self
+
+    fake = FakeGrid()
+    table._grid = fake  # type: ignore[assignment]
+    table.set_theme('light')
+    assert table._theme == 'light'
+    assert fake.props_calls[-1] == 'data-ag-theme-mode=light'
+    assert fake.updated >= 1
 
 
 def test_scaled_row_header_heights_px_clamped() -> None:

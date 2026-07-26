@@ -13,17 +13,22 @@ except ImportError:
     from sample_data import SampleDataCatalog  # type: ignore[no-redef]
 
 
-def build_nicepool_demo_page(*, embedded: bool = False) -> NicePoolDemoController:
+def build_nicepool_demo_page(
+    *,
+    embedded: bool = False,
+    dark_mode: bool = False,
+) -> NicePoolDemoController:
     """Build the NicePool demo in the current NiceGUI slot.
 
     Args:
         embedded: Whether the page is hosted inside another full-height layout.
+        dark_mode: Initial Plotly layout theme.
 
     Returns:
         Controller owning the demo widget and state.
     """
     catalog = SampleDataCatalog()
-    controller = NicePoolDemoController(catalog)
+    controller = NicePoolDemoController(catalog, dark_mode=dark_mode)
     height_class = 'h-full' if embedded else 'h-screen'
 
     with ui.column().classes(f'w-full {height_class} min-h-0 gap-4 p-4'):
@@ -45,10 +50,12 @@ def build_nicepool_demo_page(*, embedded: bool = False) -> NicePoolDemoControlle
                 'Select accepted rows',
                 on_click=controller.select_accepted_rows,
             )
-            ui.switch(
-                'Dark plots',
-                on_change=lambda e: controller.set_dark_mode(bool(e.value)),
-            )
+            if not embedded:
+                ui.switch(
+                    'Dark plots',
+                    value=dark_mode,
+                    on_change=lambda e: controller.set_dark_mode(bool(e.value)),
+                )
 
         selection_label = ui.label('Selected: (none)').classes('text-caption')
         controller.bind_selection_label(selection_label)

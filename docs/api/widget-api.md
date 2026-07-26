@@ -1,5 +1,12 @@
 # NiceWidgets widget API notes
 
+Per-widget narrative guides and auto-generated class docs live under
+[Widgets](../widgets/index.md). This page keeps cross-cutting contracts
+consumers rely on (update policy, context menus, hosting rules).
+
+For empty plots / collapsed grids, start with
+[Layout and sizing](../guide/layout-and-sizing.md).
+
 ## Purpose
 
 NiceWidgets provides reusable NiceGUI widgets for scientific and desktop

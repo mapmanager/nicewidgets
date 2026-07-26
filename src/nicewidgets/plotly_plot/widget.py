@@ -311,6 +311,20 @@ class PlotlyPlotWidget:
     sparse marker overlays, editable measurement lines, and x-axis range
     synchronization. It intentionally hides Plotly layout-shape details from
     parent NiceGUI applications.
+
+    Hosting notes:
+        - Size the root via ``plot.container`` after construction (for example
+          ``plot.container.classes("w-full h-96")``). The widget does not set a
+          default height; without sizing the plot can render at zero height.
+        - X-span event overlays live on the ``events`` sub-API
+          (:class:`~nicewidgets.plotly_plot.event_overlay.PlotlyEventOverlayApi`),
+          not on the series methods below. See unit tests in
+          ``tests/nicewidgets/test_plotly_plot_widget.py`` and
+          :class:`~nicewidgets.plotly_plot.event_overlay.PlotlyEventOverlayApi`.
+        - Import from submodules, for example
+          ``from nicewidgets.plotly_plot.widget import PlotlyPlotWidget``.
+
+    See ``examples/plotly_plot`` for a runnable demo of the core host API.
     """
 
     def __init__(
@@ -328,6 +342,9 @@ class PlotlyPlotWidget:
         layout_margins_profile: PlotlyLayoutMarginsProfile | None = None,
     ) -> None:
         """Create an empty Plotly widget.
+
+        The constructor builds the NiceGUI DOM immediately. After construction,
+        size ``self.container`` before relying on a visible plot area.
 
         Args:
             x_label: X-axis label.
@@ -817,13 +834,15 @@ class PlotlyPlotWidget:
 
         Args:
             name: Stable caller-defined trace name.
-            x: X-axis values.
-            y: Y-axis values.
+            x: X-axis values (non-empty; equal length to ``y``).
+            y: Y-axis values (non-empty; equal length to ``x``).
             visible: Whether the trace should be visible.
             y_axis: Primary ``y`` axis (``"left"``) or overlaid ``y2`` axis
                 (``"right"``). Right-axis traces create ``layout.yaxis2``.
-            line_color: Optional Plotly line color.
-            line_dash: Optional Plotly line dash.
+            line_color: Optional Plotly line color (CSS color string or Plotly
+                color, for example ``"#1f77b4"`` or ``"rgb(31,119,180)"``).
+            line_dash: Optional Plotly dash style: ``"solid"``, ``"dot"``,
+                ``"dash"``, ``"longdash"``, ``"dashdot"``, or ``"longdashdot"``.
 
         Raises:
             ValueError: If the name already exists or data are invalid.
@@ -919,10 +938,13 @@ class PlotlyPlotWidget:
     ) -> None:
         """Add a named sparse ``scattergl`` marker overlay.
 
+        Scatter overlays are excluded from :meth:`reset_x_axis_limits` fitting so
+        marker padding does not shift the derived line-trace x extent.
+
         Args:
             name: Stable caller-defined scatter overlay name.
-            x: X-axis values.
-            y: Y-axis values.
+            x: X-axis values (non-empty; equal length to ``y``).
+            y: Y-axis values (non-empty; equal length to ``x``).
             visible: Whether the scatter overlay should be visible.
             y_axis: Primary ``y`` axis (``"left"``) or overlaid ``y2`` axis
                 (``"right"``). Right-axis scatters create ``layout.yaxis2``.

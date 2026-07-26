@@ -86,7 +86,7 @@ class RasterDemoController:
         catalog: Sample data source.
     """
 
-    def __init__(self, catalog) -> None:
+    def __init__(self, catalog, *, dark_mode: bool = False) -> None:
         self._catalog = catalog
         self._viewer = PlotlyRasterViewer()
         self._toolbar: ImageToolbarWidget | None = None
@@ -99,6 +99,8 @@ class RasterDemoController:
         self._selected_roi_id: int | None = None
         self._next_roi_id: int = 1
         self._initial_load_done = False
+        self._dark_mode = bool(dark_mode)
+        self._viewer.set_dark_mode(self._dark_mode)
 
     @property
     def viewer(self) -> PlotlyRasterViewer:
@@ -109,6 +111,15 @@ class RasterDemoController:
     def dataset_name(self) -> str:
         """Return the currently loaded dataset name."""
         return self._dataset_name
+
+    def set_dark_mode(self, enabled: bool) -> None:
+        """Toggle the Plotly raster viewer layout theme.
+
+        Args:
+            enabled: Whether dark mode is enabled.
+        """
+        self._dark_mode = bool(enabled)
+        self._viewer.set_dark_mode(self._dark_mode)
 
     def build(self) -> None:
         """Build the toolbar row and the viewer in the current NiceGUI slot.

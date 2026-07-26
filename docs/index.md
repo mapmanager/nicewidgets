@@ -31,11 +31,11 @@ uv sync --extra desktop
 
 | Area | Role |
 |------|------|
-| `raster_viewer` | Plotly multiresolution raster viewer, ROI and trace overlays |
-| `plotly_plot` | General Plotly line/measurement plot widget |
+| [`raster_viewer`](widgets/raster_viewer.md) | Plotly multiresolution raster viewer, ROI and trace overlays |
+| [`plotly_plot`](widgets/plotly_plot.md) | General Plotly line/measurement plot widget |
 | `echart_widget` | ECharts line/plot widget |
-| `table_widget` / `tree_widget` | AG Grid table and tree wrappers |
-| `nicepool` | DataFrame-driven plot pool UI |
+| [`table_widget`](widgets/table_widget.md) / [`tree_widget`](widgets/tree_widget.md) | AG Grid table and tree wrappers |
+| [`nicepool`](widgets/nicepool.md) | DataFrame-driven plot pool UI |
 | `image_toolbar_widget` / `contrast_widget` | Image toolbar and contrast controls |
 | `upload_widget` | File upload normalization |
 | `utils` | Logging, clipboard, desktop detection helpers |
@@ -62,5 +62,7 @@ table = TableWidget(
 
 ## Next steps
 
+- [Widgets](widgets/index.md)
 - [Examples](guide/examples.md)
+- [Layout and sizing](guide/layout-and-sizing.md)
 - [Widget API notes](api/widget-api.md)

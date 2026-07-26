@@ -75,11 +75,16 @@ def make_demo_rows() -> list[dict[str, Any]]:
     ]
 
 
-def build_table_demo_page(*, embedded: bool = False) -> TableWidget:
+def build_table_demo_page(
+    *,
+    embedded: bool = False,
+    dark_mode: bool = False,
+) -> TableWidget:
     """Build the TableWidget demo in the current NiceGUI slot.
 
     Args:
         embedded: Whether the page is hosted inside another full-height layout.
+        dark_mode: Initial AG Grid color scheme.
 
     Returns:
         Built table widget.
@@ -147,6 +152,7 @@ def build_table_demo_page(*, embedded: bool = False) -> TableWidget:
         )
         with ui.column().classes('w-full').style('height: 420px;'):
             table.build()
+        table.set_dark_mode(dark_mode)
 
         with ui.row().classes('gap-2'):
             ui.button(

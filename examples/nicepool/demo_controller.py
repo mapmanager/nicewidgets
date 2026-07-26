@@ -66,10 +66,10 @@ class NicePoolDemoController:
         catalog: Sample data source providing named velocity-pool DataFrames.
     """
 
-    def __init__(self, catalog: SampleDataCatalog) -> None:
+    def __init__(self, catalog: SampleDataCatalog, *, dark_mode: bool = False) -> None:
         self._catalog = catalog
         self._dataset_name: str = catalog.names[0]
-        self._dark_mode: bool = False
+        self._dark_mode: bool = bool(dark_mode)
         self._pool: NicePool | None = None
 
         self._selection_label: ui.label | None = None
@@ -138,7 +138,8 @@ class NicePoolDemoController:
             enabled: Whether dark mode is enabled.
         """
         self._dark_mode = enabled
-        self.pool.set_dark_mode(enabled)
+        if self._pool is not None:
+            self._pool.set_dark_mode(enabled)
 
     def _on_row_selected(self, row_id: str, row: dict[str, object]) -> None:
         """Echo the selected row id and a couple of fields to the demo label."""

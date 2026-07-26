@@ -63,5 +63,14 @@ exclude_docs: |
 
 nav:
   - Home: index.md
-  - Examples: guide/examples.md
+  - Guide:
+      - Examples: guide/examples.md
+      - Layout and sizing: guide/layout-and-sizing.md
+  - Widgets:
+      - widgets/index.md
+      - Raster viewer: widgets/raster_viewer.md
+      - NicePool: widgets/nicepool.md
+      - PlotlyPlotWidget: widgets/plotly_plot.md
+      - TableWidget: widgets/table_widget.md
+      - TreeWidget: widgets/tree_widget.md
   - API notes: api/widget-api.md

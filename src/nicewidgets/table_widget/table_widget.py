@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
 from nicegui import events, ui
 
@@ -22,6 +22,20 @@ from nicewidgets.table_widget.js_hooks import (
 
 
 logger = get_logger(__name__)
+
+TableThemeName = Literal['light', 'dark']
+
+
+def normalize_table_theme(value: str) -> TableThemeName:
+    """Return a supported table theme name.
+
+    Args:
+        value: Candidate theme name.
+
+    Returns:
+        ``'dark'`` when ``value`` is dark; otherwise ``'light'``.
+    """
+    return 'dark' if str(value).lower() == 'dark' else 'light'
 
 
 def validate_row_id_field(row_id_field: str) -> None:
@@ -75,6 +89,9 @@ class TableWidget:
     :attr:`TableWidgetConfig.row_group_fields` opts into AG Grid Enterprise and
     groups rows by those column values in the given order. NiceWidgets loads
     the module but does not provide an AG Grid Enterprise production license.
+
+    Theme: call :meth:`set_theme` / :meth:`set_dark_mode` to drive AG Grid's
+    ``data-ag-theme-mode`` (light/dark), matching the Plotly widget theme API.
     """
 
     def __init__(
@@ -166,6 +183,7 @@ class TableWidget:
         self._root: ui.column | None = None
         self._grid: ui.aggrid | None = None
         self._context_menu: ui.context_menu | None = None
+        self._theme: TableThemeName = 'light'
 
         ui.on(self._evt_select, self._on_select_emitted)
         ui.on(self._evt_edit, self._on_edit_emitted)
@@ -210,8 +228,39 @@ class TableWidget:
                         auto_size_columns=self._config.auto_size_columns,
                     )
                 self._grid.classes('w-full h-full min-w-0 min-h-0').style('height: 100%;')
+                self._apply_theme()
         return self._root
 
+
+    def set_theme(self, theme: str) -> None:
+        """Set the AG Grid light/dark color scheme.
+
+        NiceGUI's ``ui.aggrid`` follows page dark mode via
+        ``data-ag-theme-mode``. This method sets that attribute explicitly so
+        hosts can drive table theming the same way as Plotly widgets
+        (``set_theme`` / ``set_dark_mode``), independent of call order relative
+        to ``ui.dark_mode``.
+
+        Args:
+            theme: Theme name, either ``'light'`` or ``'dark'``.
+        """
+        self._theme = normalize_table_theme(theme)
+        self._apply_theme()
+
+    def set_dark_mode(self, enabled: bool) -> None:
+        """Set the AG Grid color scheme from a dark-mode flag.
+
+        Args:
+            enabled: Whether dark mode is enabled.
+        """
+        self.set_theme('dark' if enabled else 'light')
+
+    def _apply_theme(self) -> None:
+        """Push the current theme to the built AG Grid element, if any."""
+        if self._grid is None:
+            return
+        self._grid.props(f'data-ag-theme-mode={self._theme}')
+        self._grid.update()
 
     def set_enabled(self, enabled: bool) -> None:
         """Enable or disable pointer interaction with the table.

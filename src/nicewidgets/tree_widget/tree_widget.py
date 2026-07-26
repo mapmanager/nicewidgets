@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 import json
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
 from nicegui import events, ui
 
@@ -31,6 +31,20 @@ except ImportError:  # pragma: no cover - native-only optional dependency
     pyperclip = None  # type: ignore[assignment]
 
 logger = get_logger(__name__)
+
+TreeThemeName = Literal['light', 'dark']
+
+
+def normalize_tree_theme(value: str) -> TreeThemeName:
+    """Return a supported tree theme name.
+
+    Args:
+        value: Candidate theme name.
+
+    Returns:
+        ``'dark'`` when ``value`` is dark; otherwise ``'light'``.
+    """
+    return 'dark' if str(value).lower() == 'dark' else 'light'
 
 
 def validate_row_id_field(row_id_field: str) -> None:
@@ -218,6 +232,7 @@ class TreeWidget:
         self._root: ui.column | None = None
         self._grid: ui.aggrid | None = None
         self._context_menu: ui.context_menu | None = None
+        self._theme: TreeThemeName = 'light'
 
         ui.on(self._evt_select, self._on_select_emitted)
         ui.on(self._evt_expand, self._on_expand_emitted)
@@ -250,6 +265,33 @@ class TreeWidget:
                 # avoids that broken state entirely.
                 self._ensure_grid_built()
         return self._root
+
+    def set_theme(self, theme: str) -> None:
+        """Set the AG Grid light/dark color scheme.
+
+        Sets ``data-ag-theme-mode`` on the grid so hosts can drive tree theming
+        the same way as ``TableWidget`` and Plotly widgets.
+
+        Args:
+            theme: Theme name, either ``'light'`` or ``'dark'``.
+        """
+        self._theme = normalize_tree_theme(theme)
+        self._apply_theme()
+
+    def set_dark_mode(self, enabled: bool) -> None:
+        """Set the AG Grid color scheme from a dark-mode flag.
+
+        Args:
+            enabled: Whether dark mode is enabled.
+        """
+        self.set_theme('dark' if enabled else 'light')
+
+    def _apply_theme(self) -> None:
+        """Push the current theme to the built AG Grid element, if any."""
+        if self._grid is None:
+            return
+        self._grid.props(f'data-ag-theme-mode={self._theme}')
+        self._grid.update()
 
     def set_enabled(self, enabled: bool) -> None:
         """Enable or disable pointer interaction with the tree widget.
@@ -704,6 +746,7 @@ class TreeWidget:
                 auto_size_columns=self._config.auto_size_columns,
                 modules='enterprise',
             ).classes('w-full h-full min-w-0 min-h-0').style('height: 100%;')
+            self._apply_theme()
 
     def _find_column_def(self, field: str) -> dict[str, Any]:
         for c in self._column_defs:

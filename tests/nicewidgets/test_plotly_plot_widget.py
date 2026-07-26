@@ -709,6 +709,57 @@ def test_widget_set_dark_mode_updates_layout_and_relayouts(fake_plotly: list[_Fa
     assert '"paper_bgcolor": "#111827"' in fake_plotly[0].client.calls[-1]
 
 
+def test_host_can_replace_default_h_full_with_fixed_height(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hosts must be able to drop ``h-full`` and apply an explicit height.
+
+    Percentage ``h-full`` collapses when the parent height is content-sized.
+    Demo/host code removes ``h-full`` then adds ``h-96`` (see layout guide).
+    """
+
+    class _TrackingElement(_FakeUiElement):
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            super().__init__(*_args, **_kwargs)
+            self.class_tokens: set[str] = set()
+
+        def classes(self, *args: Any, **kwargs: Any) -> _TrackingElement:
+            if args:
+                self.class_tokens.update(str(args[0]).split())
+            remove = kwargs.get("remove")
+            if remove:
+                self.class_tokens.difference_update(str(remove).split())
+            add = kwargs.get("add")
+            if add:
+                self.class_tokens.update(str(add).split())
+            return self
+
+    created: list[_FakePlotlyElement] = []
+
+    def plotly_factory(figure: dict[str, Any]) -> _FakePlotlyElement:
+        element = _FakePlotlyElement(figure)
+        created.append(element)
+        return element
+
+    monkeypatch.setattr("nicewidgets.plotly_plot.widget.ui.plotly", plotly_factory)
+    monkeypatch.setattr("nicewidgets.plotly_plot.widget.ui.element", _TrackingElement)
+    monkeypatch.setattr("nicewidgets.plotly_plot.widget.ui.label", _FakeUiLabel)
+    monkeypatch.setattr(
+        "nicewidgets.plotly_plot.widget.ui.add_head_html",
+        lambda *_args, **_kwargs: None,
+    )
+
+    widget = PlotlyPlotWidget()
+    assert "h-full" in widget.container.class_tokens
+
+    widget.container.classes(remove="h-full")
+    widget.container.classes(add="w-full h-96")
+
+    assert "h-full" not in widget.container.class_tokens
+    assert "h-96" in widget.container.class_tokens
+    assert created  # plot element constructed
+
+
 def test_register_series_menu_items_preserves_visibility_across_refresh(
     fake_plotly: list[_FakePlotlyElement],
 ) -> None:

@@ -70,6 +70,25 @@ def test_tree_widget_config_defaults() -> None:
     assert cfg.index_header == ''
 
 
+def test_normalize_tree_theme() -> None:
+    from nicewidgets.tree_widget.tree_widget import normalize_tree_theme
+
+    assert normalize_tree_theme('dark') == 'dark'
+    assert normalize_tree_theme('LIGHT') == 'light'
+
+
+def test_tree_widget_theme_api_stores_before_build() -> None:
+    tw = TreeWidget(
+        columns=_sample_columns(),
+        row_id_field='row_id',
+        rows=_sample_rows(),
+    )
+    tw.set_dark_mode(True)
+    assert tw._theme == 'dark'
+    tw.set_theme('light')
+    assert tw._theme == 'light'
+
+
 def test_build_aggrid_options_suppress_movable_columns() -> None:
     tw = TreeWidget(
         columns=_sample_columns(),

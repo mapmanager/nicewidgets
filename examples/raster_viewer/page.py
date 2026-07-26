@@ -13,17 +13,22 @@ except ImportError:
     from sample_data import SampleDataCatalog  # type: ignore[no-redef]
 
 
-def build_raster_demo_page(*, embedded: bool = False) -> RasterDemoController:
+def build_raster_demo_page(
+    *,
+    embedded: bool = False,
+    dark_mode: bool = False,
+) -> RasterDemoController:
     """Build the raster demo in the current NiceGUI slot.
 
     Args:
         embedded: Whether the page is hosted inside another full-height layout.
+        dark_mode: Initial Plotly layout theme.
 
     Returns:
         Controller owning the demo widgets and state.
     """
     catalog = SampleDataCatalog()
-    controller = RasterDemoController(catalog)
+    controller = RasterDemoController(catalog, dark_mode=dark_mode)
     height_class = 'h-full' if embedded else 'min-h-screen'
 
     with ui.column().classes(f'w-full {height_class} gap-4 p-4'):

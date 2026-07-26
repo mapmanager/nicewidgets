@@ -3,17 +3,26 @@
 Runnable demos live under `examples/` in the repository. They are **not** part
 of the installable wheel.
 
+Host applications that embed Plotly or AG Grid widgets should also read
+[Layout and sizing](layout-and-sizing.md) (parent height / flex collapse).
+
+Widget narrative + API pages: [Widgets](../widgets/index.md).
+
 ## Combined demo app
 
-Run all three product demos from one browser-based app:
+Run all product demos from one browser-based app:
 
 ```bash
 uv run python -m examples.main_demo.main
 ```
 
 Open [http://localhost:8080](http://localhost:8080). The home page links to
-independent `/raster`, `/table`, and `/nicepool` routes. Separate routes keep
-the Plotly and AG Grid demos isolated and provide stable deep links.
+independent `/raster`, `/table`, `/nicepool`, `/plotly`, and `/tree` routes. Separate
+routes keep the Plotly and AG Grid demos isolated and provide stable deep links.
+
+The shared top toolbar shows the `NiceWidgets` brand, demo links, a Dark switch
+(Quasar chrome via `ui.dark_mode` plus each page's widget theme API), and a Docs
+link to the published MkDocs site.
 
 To run the same app with Docker Compose:
 
@@ -74,11 +83,31 @@ The `list[dict]` sample data mirrors what `acqstore`'s `AcqImageList` analysis
 pools return, so a later revision can swap in `velocity_analysis_pool.get_dataframe()`
 without changing the widget wiring.
 
-## Scripts
-
-Focused manual diagnostics live under `scripts/`:
+## PlotlyPlotWidget
 
 ```bash
-uv run python scripts/try_plotly_plot_widget.py
-uv run python scripts/try_plotly_plot_event_overlays.py
+uv run python examples/plotly_plot/demo_app.py
 ```
+
+The demo exercises the core host API: a continuous `scattergl` line, sparse peak
+markers, programmatic x-range set/reset, `on_x_range_changed`, one draggable
+horizontal measurement line with `on_measurement_changed`, and the built-in
+right-click display menu. Layout:
+
+- `sample_data.py`: synthetic time/intensity sequences (pure data, no NiceGUI)
+- `demo_controller.py`: widget config, callbacks, and public-API wiring
+- `page.py`: reusable page layout and demo-only controls
+- `demo_app.py`: standalone route and `ui.run` entry point
+
+## TreeWidget
+
+```bash
+uv run python examples/tree_widget/demo_app.py
+```
+
+The demo shows an AG Grid Enterprise file/ROI tree with selection, expand/collapse,
+and a custom context menu. Layout:
+
+- `sample_data.py`: synthetic hierarchy rows (pure data, no NiceGUI)
+- `page.py`: reusable page layout and demo-only controls
+- `demo_app.py`: standalone route and `ui.run` entry point
