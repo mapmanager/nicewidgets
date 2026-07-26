@@ -26,10 +26,39 @@ class PlotType(Enum):
 @dataclass
 class PlotState:
     """Configuration state for a single plot.
-    
-    This dataclass holds all configurable parameters for a plot, including
+
+    This dataclass holds all configurable parameters for one plot in a pool:
     data selection (pre-filter categorical columns, x/y columns), plot type,
-    visual options, and statistics display settings.
+    grouping, visual options, and statistics display settings. It round-trips
+    to/from a plain dict via :meth:`to_dict` and :meth:`from_dict` for session
+    persistence and named presets.
+
+    Attributes:
+        pre_filter: Mapping of pre-filter column name to selected value. A value
+            of ``PRE_FILTER_NONE`` means that column applies no filter.
+        xcol: Column plotted on the x-axis.
+        ycol: Column plotted on the y-axis.
+        plot_type: Which :class:`PlotType` to render.
+        group_col: Grouping column. Used by grouped/scatter/swarm and becomes the
+            x-axis for box/violin/swarm plots.
+        color_grouping: Optional nested grouping (color) for box/violin/swarm.
+        ystat: Aggregation statistic for grouped plots (e.g. ``"mean"``).
+        cv_epsilon: For the grouped coefficient-of-variation statistic, treat a
+            group whose ``|mean|`` is below this value as zero (returns NaN).
+        histogram_bins: Bin count for histogram and cumulative histogram plots.
+        use_absolute_value: Apply ``abs()`` to numeric x/y values before plotting.
+        swarm_jitter_amount: Horizontal jitter applied to swarm points.
+        swarm_group_offset: Offset separating color groups within a swarm.
+        use_remove_values: Enable the remove-values pre-filter.
+        remove_values_threshold: Threshold used when ``use_remove_values`` is set.
+        show_mean: Show a mean line for scatter/swarm plots.
+        show_std_sem: Show std/sem error bars for scatter/swarm plots.
+        std_sem_type: Error-bar type, ``"std"`` or ``"sem"``.
+        mean_line_width: Line width for the mean line.
+        error_line_width: Line width for std/sem error bars.
+        show_raw: Show raw data points.
+        point_size: Marker size for scatter/swarm points.
+        show_legend: Show the plot legend.
     """
     pre_filter: dict[str, Any]  # column name -> selected value; PRE_FILTER_NONE = no filter
     xcol: str
@@ -38,8 +67,6 @@ class PlotState:
     group_col: str | None = None    # used by grouped/scatter/swarm; becomes x-axis for box/violin/swarm
     color_grouping: str | None = None  # nested grouping (color parameter) for box/violin/swarm
     ystat: str = "mean"                # used by grouped only
-    # abb 20250301
-    # cv_epsilon: float = 1e-10           # for grouped cv: treat |mean| < this as zero (return NaN)
     cv_epsilon: float = 0.01           # for grouped cv: treat |mean| < this as zero (return NaN)
     
     histogram_bins: int = 50            # number of bins for histogram and cumulative histogram

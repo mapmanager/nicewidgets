@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from nicewidgets.aggrid_common.enterprise import DEFAULT_AG_GRID_ENTERPRISE_MODULE_URL
+
 SelectionMode = Literal['none', 'single', 'multiple']
 
 
@@ -52,6 +54,16 @@ class TableWidgetConfig:
         index_field: Row dict / AG Grid field name for the index column (must not
             collide with application row keys).
         index_header: Column header label for the index column.
+        row_group_fields: Ordered application column fields used as AG Grid
+            Enterprise row-group categories. Empty keeps the community module.
+        group_default_expanded: Number of grouping levels expanded initially.
+            ``0`` collapses all groups; ``-1`` expands all groups.
+        hide_row_group_columns: Hide source category columns after their values
+            move into AG Grid's generated group column.
+        enterprise_module_url: AG Grid Enterprise ESM module URL passed to
+            ``ui.aggrid.set_module_source`` when ``row_group_fields`` is not
+            empty. ``None`` assumes the host configured the module source.
+            Enabling the module does not provide a production license.
     """
 
     selection_mode: SelectionMode = 'single'
@@ -68,3 +80,7 @@ class TableWidgetConfig:
     show_index_column: bool = True
     index_field: str = 'table_row_index'
     index_header: str = 'Index'
+    row_group_fields: tuple[str, ...] = ()
+    group_default_expanded: int = 1
+    hide_row_group_columns: bool = True
+    enterprise_module_url: str | None = DEFAULT_AG_GRID_ENTERPRISE_MODULE_URL

@@ -69,7 +69,13 @@ def _get_row_id_js_expression(row_id_field: str) -> str:
 
 
 class TableWidget:
-    """NiceGUI AG Grid wrapper with modular selection, editing, and context-menu composition."""
+    """NiceGUI AG Grid wrapper with selection, editing, grouping, and context menus.
+
+    The widget uses AG Grid Community by default. Setting
+    :attr:`TableWidgetConfig.row_group_fields` opts into AG Grid Enterprise and
+    groups rows by those column values in the given order. NiceWidgets loads
+    the module but does not provide an AG Grid Enterprise production license.
+    """
 
     def __init__(
         self,
@@ -91,6 +97,26 @@ class TableWidget:
         self._config = config or TableWidgetConfig()
         self._grid_options_user = dict(grid_options or {})
         self._selection_origin = 'internal'
+        self._row_group_fields = tuple(str(field).strip() for field in self._config.row_group_fields)
+        if any(not field for field in self._row_group_fields):
+            raise ValueError('row_group_fields entries must be non-empty strings')
+        if len(set(self._row_group_fields)) != len(self._row_group_fields):
+            raise ValueError('row_group_fields must not contain duplicates')
+        if (
+            isinstance(self._config.group_default_expanded, bool)
+            or not isinstance(self._config.group_default_expanded, int)
+            or self._config.group_default_expanded < -1
+        ):
+            raise ValueError('group_default_expanded must be an int greater than or equal to -1')
+
+        application_fields = {column.field for column in columns}
+        unknown_group_fields = [
+            field for field in self._row_group_fields if field not in application_fields
+        ]
+        if unknown_group_fields:
+            raise ValueError(
+                f'row_group_fields contains unknown column field(s): {unknown_group_fields!r}'
+            )
 
         self._evt_select = f'table_widget_select_{id(self)}'
         self._evt_edit = f'table_widget_edit_{id(self)}'
@@ -123,6 +149,12 @@ class TableWidget:
             built_columns = tuple(columns)
 
         self._column_defs: list[dict[str, Any]] = [c.as_aggrid_column_def() for c in built_columns]
+        for group_index, field in enumerate(self._row_group_fields):
+            column_def = next(column for column in self._column_defs if column.get('field') == field)
+            column_def['rowGroup'] = True
+            column_def['rowGroupIndex'] = group_index
+            if self._config.hide_row_group_columns:
+                column_def['hide'] = True
         self._rows: list[dict[str, Any]] = [dict(r) for r in (rows or ())]
         validate_rows_for_row_id_field(self._rows, self._row_id_field)
         self._assign_row_indices()
@@ -146,7 +178,16 @@ class TableWidget:
             row[self._index_field] = i + 1
 
     def build(self, parent: ui.element | None = None) -> ui.column:
-        """Create the wrapper + context menu + AG Grid under ``parent`` (or current slot)."""
+        """Create the wrapper + context menu + AG Grid under ``parent``.
+
+        When row grouping is configured, this loads the configured Enterprise
+        ESM source (unless it is ``None``) and builds with
+        ``modules='enterprise'``. Hosts need their own AG Grid Enterprise
+        license for production use.
+        """
+        if self._row_group_fields and self._config.enterprise_module_url:
+            ui.aggrid.set_module_source(self._config.enterprise_module_url)
+
         # AG Grid requires a real height from its container; provide a sane default
         # when callers do not pass a sized parent container.
         container = parent if parent is not None else ui.column().classes('w-full').style('height: 24rem;')
@@ -157,10 +198,18 @@ class TableWidget:
                 with self._context_menu:
                     self._build_context_menu_content()
                 self._root.on('contextmenu', self._on_context_menu_event)
-                self._grid = ui.aggrid(
-                    self._build_aggrid_options(),
-                    auto_size_columns=self._config.auto_size_columns,
-                ).classes('w-full h-full min-w-0 min-h-0').style('height: 100%;')
+                if self._row_group_fields:
+                    self._grid = ui.aggrid(
+                        self._build_aggrid_options(),
+                        auto_size_columns=self._config.auto_size_columns,
+                        modules='enterprise',
+                    )
+                else:
+                    self._grid = ui.aggrid(
+                        self._build_aggrid_options(),
+                        auto_size_columns=self._config.auto_size_columns,
+                    )
+                self._grid.classes('w-full h-full min-w-0 min-h-0').style('height: 100%;')
         return self._root
 
 
@@ -483,6 +532,8 @@ class TableWidget:
             base['stopEditingWhenCellsLoseFocus'] = True
         if self._config.fit_columns_on_grid_resize:
             base[':onGridSizeChanged'] = 'params => params.api.sizeColumnsToFit()'
+        if self._row_group_fields:
+            base['groupDefaultExpanded'] = self._config.group_default_expanded
         row_sel = self._row_selection_object(self._config.selection_mode)
         if row_sel is not None:
             base['rowSelection'] = row_sel

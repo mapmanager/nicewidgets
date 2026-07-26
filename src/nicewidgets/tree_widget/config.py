@@ -5,11 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-SelectionMode = Literal['none', 'single', 'multiple']
+from nicewidgets.aggrid_common.enterprise import DEFAULT_AG_GRID_ENTERPRISE_MODULE_URL
 
-DEFAULT_AG_GRID_ENTERPRISE_MODULE_URL = (
-    'https://cdn.jsdelivr.net/npm/ag-grid-enterprise@34.2.0/+esm'
-)
+SelectionMode = Literal['none', 'single', 'multiple']
 
 
 @dataclass(frozen=True, slots=True)

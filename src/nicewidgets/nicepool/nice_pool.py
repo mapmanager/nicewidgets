@@ -15,13 +15,31 @@ class NicePool(PlotPoolController):
     """General-purpose DataFrame plotting and selection widget.
 
     ``NicePool`` preserves the original plot-pool GUI behavior while exposing a
-    small stable API for host applications and scripts.
+    small stable API for host applications and scripts. It renders pre-filter
+    dropdowns, plot-type controls, named presets, an optional data table, and
+    one or more linked Plotly plots.
+
+    DataFrame contract:
+        - ``df`` must contain the column named by ``config.unique_row_id_col``
+          (default ``"pool_row_id"``) with unique, non-empty string-able values.
+          This column links table rows, plot points, and
+          :meth:`select_points_by_row_ids`.
+        - Categorical pre-filter columns are taken from
+          ``config.pre_filter_columns`` when given, otherwise auto-detected from
+          ``config.auto_pre_filter_columns`` (``accept``, ``channel``,
+          ``roi_id``). Missing columns are ignored.
+        - At least one numeric column is needed for the y-axis.
+
+    See ``examples/nicepool`` for a runnable demo built on this contract.
 
     Args:
-        df: Source DataFrame.
-        config: Optional NicePool configuration.
-        on_row_selected: Optional callback invoked when a table row is selected.
-        on_refresh_requested: Optional callback invoked by the refresh button.
+        df: Source DataFrame satisfying the contract above.
+        config: Optional NicePool configuration. Defaults to ``NicePoolConfig()``.
+        on_row_selected: Optional callback ``(row_id, row_dict) -> None`` invoked
+            when a table row is selected. Overrides ``config.on_table_row_selected``.
+        on_refresh_requested: Optional callback ``() -> pd.DataFrame`` invoked by
+            the refresh button; its return value replaces the data. Overrides
+            ``config.on_refresh_requested``.
     """
 
     def __init__(

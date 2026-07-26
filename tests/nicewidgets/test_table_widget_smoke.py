@@ -72,6 +72,10 @@ def test_table_widget_config_defaults() -> None:
     assert cfg.cell_font_size_px is None
     assert cfg.row_height is None
     assert cfg.header_height is None
+    assert cfg.row_group_fields == ()
+    assert cfg.group_default_expanded == 1
+    assert cfg.hide_row_group_columns is True
+    assert cfg.enterprise_module_url
 
 
 def test_scaled_row_header_heights_px_clamped() -> None:
@@ -132,6 +136,85 @@ def test_build_aggrid_options_suppresses_enterprise_context_menu() -> None:
     opts = tw._build_aggrid_options()
     assert opts['suppressContextMenu'] is True
     assert opts['preventDefaultOnContextMenu'] is True
+
+
+def test_row_group_fields_enable_ordered_enterprise_column_grouping() -> None:
+    tw = TableWidget(
+        [
+            ColumnDef(field='id', headerName='ID'),
+            ColumnDef(field='category', headerName='Category'),
+            ColumnDef(field='kind', headerName='Kind'),
+        ],
+        'id',
+        rows=[{'id': 'a', 'category': 'Images', 'kind': 'TIFF'}],
+        config=TableWidgetConfig(
+            row_group_fields=('category', 'kind'),
+            group_default_expanded=2,
+        ),
+    )
+
+    opts = tw._build_aggrid_options()
+    by_field = {column['field']: column for column in opts['columnDefs']}
+    assert by_field['category']['rowGroup'] is True
+    assert by_field['category']['rowGroupIndex'] == 0
+    assert by_field['category']['hide'] is True
+    assert by_field['kind']['rowGroup'] is True
+    assert by_field['kind']['rowGroupIndex'] == 1
+    assert opts['groupDefaultExpanded'] == 2
+    assert tw._row_group_fields == ('category', 'kind')
+
+
+def test_row_group_fields_can_keep_source_columns_visible() -> None:
+    tw = TableWidget(
+        [ColumnDef(field='id', headerName='ID'), ColumnDef(field='category', headerName='Category')],
+        'id',
+        rows=[{'id': 'a', 'category': 'Images'}],
+        config=TableWidgetConfig(
+            row_group_fields=('category',),
+            hide_row_group_columns=False,
+        ),
+    )
+
+    by_field = {
+        column['field']: column for column in tw._build_aggrid_options()['columnDefs']
+    }
+    assert by_field['category']['rowGroup'] is True
+    assert by_field['category']['hide'] is False
+
+
+@pytest.mark.parametrize(
+    ('row_group_fields', 'message'),
+    [
+        (('missing',), 'unknown column'),
+        (('category', 'category'), 'duplicates'),
+        (('',), 'non-empty'),
+    ],
+)
+def test_row_group_fields_validate(
+    row_group_fields: tuple[str, ...],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        TableWidget(
+            [ColumnDef(field='id', headerName='ID'), ColumnDef(field='category', headerName='Category')],
+            'id',
+            rows=[{'id': 'a', 'category': 'Images'}],
+            config=TableWidgetConfig(row_group_fields=row_group_fields),
+        )
+
+
+@pytest.mark.parametrize('value', [-2, True, 1.5])
+def test_group_default_expanded_validates(value: Any) -> None:
+    with pytest.raises(ValueError, match='group_default_expanded'):
+        TableWidget(
+            [ColumnDef(field='id', headerName='ID'), ColumnDef(field='category', headerName='Category')],
+            'id',
+            rows=[{'id': 'a', 'category': 'Images'}],
+            config=TableWidgetConfig(
+                row_group_fields=('category',),
+                group_default_expanded=value,  # type: ignore[arg-type]
+            ),
+        )
 
 
 def test_get_row_id_js_expression_escapes_field_name() -> None:

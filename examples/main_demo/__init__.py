@@ -1,0 +1,1 @@
+"""Combined NiceWidgets demo application."""
