@@ -33,7 +33,6 @@ uv sync --extra desktop
 |------|------|
 | [`raster_viewer`](widgets/raster_viewer.md) | Plotly multiresolution raster viewer, ROI and trace overlays |
 | [`plotly_plot`](widgets/plotly_plot.md) | General Plotly line/measurement plot widget |
-| `echart_widget` | ECharts line/plot widget |
 | [`table_widget`](widgets/table_widget.md) / [`tree_widget`](widgets/tree_widget.md) | AG Grid table and tree wrappers |
 | [`nicepool`](widgets/nicepool.md) | DataFrame-driven plot pool UI |
 | `image_toolbar_widget` / `contrast_widget` | Image toolbar and contrast controls |

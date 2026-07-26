@@ -1,3 +1,10 @@
+# From the repository root:
+#   docker compose -f examples/main_demo/docker-compose.yml up --build
+#
+# Then open http://localhost:8080
+# Stop with Ctrl+C, or run:
+#   docker compose -f examples/main_demo/docker-compose.yml down
+
 services:
   nicewidgets-demo:
     build:

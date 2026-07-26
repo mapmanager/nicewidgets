@@ -8,8 +8,8 @@ NiceGUI host application: construction, configuration, and the public API.
 | Widget | Role |
 |--------|------|
 | [Raster viewer](raster_viewer.md) | Multiresolution Plotly image viewer |
-| [NicePool](nicepool.md) | DataFrame-driven plot pool |
 | [PlotlyPlotWidget](plotly_plot.md) | Scientific traces and measurements |
+| [NicePool](nicepool.md) | DataFrame-driven plot pool |
 | [TableWidget](table_widget.md) | AG Grid table |
 | [TreeWidget](tree_widget.md) | AG Grid tree |
 
@@ -20,5 +20,5 @@ Plotly and AG Grid widgets need a **definite parent height**. See
 or collapsed grids.
 
 Runnable demos live under [`examples/`](../guide/examples.md) (not part of the
-installable wheel). Optional screenshots can be dropped in
-`docs/assets/widgets/` (see that folder's README).
+installable wheel). Screenshots from the combined demo are in
+`docs/assets/widgets/`.

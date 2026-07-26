@@ -1139,6 +1139,8 @@ class PlotlyPlotWidget:
         self._display_options.theme = self._theme
         self._sync_theme_to_plotly_dict()
         self._relayout_theme()
+        # Relayout JS no-ops when the graph is not mounted yet (SPA first paint).
+        self._plot_element.update()
 
     def set_dark_mode(self, enabled: bool) -> None:
         """Set the Plotly layout theme from a dark-mode flag.
@@ -2034,12 +2036,20 @@ if (!plotDiv || !plotDiv.data) return;
 """
 
     def _add_plotly_trace(self, trace: dict[str, Any]) -> None:
-        """Push a newly added trace to the browser."""
+        """Push a newly added trace to the browser.
+
+        Incremental ``Plotly.addTraces`` is used when the live graph exists.
+        Also sync via NiceGUI ``update()``: on first SPA navigation into a page
+        that builds traces during construction, the graph div is often not
+        mounted yet and the JS path no-ops, which previously left an empty
+        chart despite a populated Python figure dict.
+        """
         js = f"""
 {self._js_plotly_graph_div()}
 Plotly.addTraces(plotDiv, [{json.dumps(trace)}]);
 """
         self._run_plotly_javascript(js)
+        self._plot_element.update()
 
     def _restyle_plotly_trace(self, index: int, trace: dict[str, Any]) -> None:
         """Push trace replacement values to the browser with ``Plotly.restyle``."""
@@ -2049,6 +2059,7 @@ Plotly.addTraces(plotDiv, [{json.dumps(trace)}]);
 Plotly.restyle(plotDiv, {json.dumps(restyle)}, [{index}]);
 """
         self._run_plotly_javascript(js)
+        self._plot_element.update()
 
     def _delete_plotly_trace(self, index: int) -> None:
         """Remove one Plotly trace from the browser."""
@@ -2057,6 +2068,7 @@ Plotly.restyle(plotDiv, {json.dumps(restyle)}, [{index}]);
 Plotly.deleteTraces(plotDiv, [{index}]);
 """
         self._run_plotly_javascript(js)
+        self._plot_element.update()
 
     def _relayout(self, payload: dict[str, Any], *, source: str = "relayout") -> None:
         """Push a Plotly relayout payload to the browser."""
@@ -2077,6 +2089,8 @@ Plotly.relayout(plotDiv, {json.dumps(payload)});
         combined = measurement_shapes + self.events.build_plotly_shapes()
         self._figure["layout"]["shapes"] = combined
         self._relayout({"shapes": combined}, source="event_overlays")
+        # Relayout JS no-ops when the graph is not mounted yet (SPA first paint).
+        self._plot_element.update()
 
     def _sync_theme_to_plotly_dict(self) -> None:
         """Synchronize the selected light/dark theme into the local figure dict."""

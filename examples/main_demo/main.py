@@ -42,9 +42,9 @@ DEMO_ROUTES: tuple[tuple[str, str, str], ...] = (
         'Multichannel raster display with toolbar, contrast, and ROI controls.',
     ),
     (
-        '/table',
-        'TableWidget',
-        'Grouped AG Grid table with selection, editing, and context actions.',
+        '/plotly',
+        'PlotlyPlotWidget',
+        'Scientific traces, scatters, measurements, and x-range callbacks.',
     ),
     (
         '/nicepool',
@@ -52,9 +52,9 @@ DEMO_ROUTES: tuple[tuple[str, str, str], ...] = (
         'DataFrame-driven interactive plots with filters and linked selection.',
     ),
     (
-        '/plotly',
-        'PlotlyPlotWidget',
-        'Scientific traces, scatters, measurements, and x-range callbacks.',
+        '/table',
+        'TableWidget',
+        'Grouped AG Grid table with selection, editing, and context actions.',
     ),
     (
         '/tree',

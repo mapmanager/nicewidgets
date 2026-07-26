@@ -3,6 +3,8 @@
 `PlotlyRasterViewer` displays multiresolution 2D rasters in NiceGUI with ROI and
 trace overlays, contrast-friendly updates, and a built-in context menu.
 
+![Raster viewer demo](../assets/widgets/raster_viewer.png)
+
 ## Embed
 
 ```python

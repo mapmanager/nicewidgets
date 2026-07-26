@@ -164,29 +164,6 @@ get_current_roi_bounds(roi_id)
 
 External callers should not parse raw Plotly relayout payloads if nicewidgets can hide that complexity.
 
-## EChartWidget
-
-Responsibilities:
-
-```text
-- display one or more 1D/2D chart series
-- provide simple line plot API
-- update chart options cleanly
-- future axis range/datazoom events
-```
-
-Current/desired public API:
-
-```python
-set_line_data(x, y, x_label, y_label, title=None) -> None
-clear() -> None
-set_x_axis_limits(x_min, x_max) -> None
-reset_x_axis_limits() -> None
-```
-
-External callers should pass prepared series data into EChartWidget. They should
-not construct low-level ECharts options except through widget APIs.
-
 ## Axis range linking
 
 Applications may need a primary image x-axis and an analysis plot x-axis linked.
@@ -198,8 +175,8 @@ PlotlyRasterViewer:
   emit x-axis range changes from Plotly relayout
   accept programmatic x-axis range updates
 
-EChartWidget:
-  emit x-axis range changes from datazoom/axis interactions
+PlotlyPlotWidget:
+  emit x-axis range changes from Plotly relayout / zoom
   accept programmatic x-axis range updates
 ```
 
@@ -271,7 +248,8 @@ Simple widget state updates should be synchronous where possible. Async widget A
 
 ### Axis linking is not finished
 
-Plotly and ECharts need stable range callback APIs before applications should implement full axis linking.
+Plotly widgets need stable range callback APIs before applications should
+implement full axis linking.
 
 ### Keep widgets application-agnostic
 

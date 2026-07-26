@@ -4,6 +4,8 @@
 controls, optional table, named presets, and linked selection between table
 rows and Plotly points.
 
+![NicePool demo](../assets/widgets/nicepool.png)
+
 ## Embed
 
 ```python

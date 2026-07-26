@@ -4,6 +4,8 @@
 public surface: stable row ids, selection, context menus, and expand/collapse
 helpers. Inline cell editing is not part of the v1 surface.
 
+![TreeWidget demo](../assets/widgets/tree_widget.png)
+
 ## Embed
 
 ```python

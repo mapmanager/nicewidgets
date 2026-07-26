@@ -83,16 +83,24 @@ Checklist:
 
 ## First SPA navigation blank plot
 
-Symptom: navigating from a home index card into a demo route shows an empty
-Plotly area; clicking the same route again in the toolbar shows the plot.
+Symptom: navigating from the home page or toolbar into a Plotly route shows an
+empty (often white) plot area even when the container has a non-zero size.
 
-Cause: first client navigation mounts the widget while the flex/`h-full` chain
-still resolves to ~0px. Remount gets a real size.
+Two failure modes show up together:
 
-Mitigations used in `examples/plotly_plot`:
+1. **Height collapse** — `h-full` on a content-sized parent resolves to ~0px.
+2. **Stale empty figure** — hosts that call `add_trace` / `plot_scatter` during
+   page construction race the browser mount. Incremental `Plotly.addTraces` JS
+   no-ops when `.js-plotly-plot` is not ready yet, so the Python figure dict has
+   data but the client chart stays empty.
 
-1. Remove default `h-full` and apply a fixed height (`h-96`).
-2. After mount, nudge Plotly:
+Mitigations:
+
+1. Remove default `h-full` and apply a fixed height (`h-96`) on the plot root.
+2. After mutating the figure, call NiceGUI `ui.plotly.update()` (the widget does
+   this on add/update/remove/theme/shapes) so SPA first paint gets the full
+   figure even when incremental JS skipped.
+3. Optionally nudge Plotly after mount:
 
 ```javascript
 const el = document.querySelector('.nw-plotly-plot .js-plotly-plot');

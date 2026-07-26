@@ -4,6 +4,8 @@
 traces, sparse marker overlays, editable measurement lines/pairs, x-range
 callbacks, and a right-click display menu.
 
+![PlotlyPlotWidget demo](../assets/widgets/plotly_plot.png)
+
 ## Embed
 
 ```python

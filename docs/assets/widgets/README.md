@@ -1,12 +1,16 @@
-# Placeholder directory for optional widget screenshots (PNG).
+# Widget screenshot assets
 
-# Drop files here when you capture from the running demos (main_demo routes
-# or standalone examples). Suggested names:
-#   raster_viewer.png
-#   nicepool.png
-#   plotly_plot.png
-#   table_widget.png
-#   tree_widget.png
-#
-# Then reference from a widget page with:
-#   ![TreeWidget demo](../assets/widgets/tree_widget.png)
+PNG captures from the combined demo (`examples/main_demo`), taken via the
+shared toolbar routes:
+
+- `raster_viewer.png` — `/raster`
+- `plotly_plot.png` — `/plotly`
+- `nicepool.png` — `/nicepool`
+- `table_widget.png` — `/table`
+- `tree_widget.png` — `/tree`
+
+Widget pages link them like:
+
+```markdown
+![PlotlyPlotWidget demo](../assets/widgets/plotly_plot.png)
+```

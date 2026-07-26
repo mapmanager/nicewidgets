@@ -3,6 +3,8 @@
 `TableWidget` wraps NiceGUI `ui.aggrid` with stable string row ids, selection,
 optional editing, context menus, and optional AG Grid Enterprise row grouping.
 
+![TableWidget demo](../assets/widgets/table_widget.png)
+
 ## Embed
 
 ```python

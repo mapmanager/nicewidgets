@@ -140,6 +140,8 @@ class PlotlyPlotDemoController:
 
     def _nudge_plotly_resize(self) -> None:
         """Ask Plotly to remeasure after the container has a real client size."""
+        # Belt-and-suspenders with the widget's figure sync: SPA first paint can
+        # leave Plotly sized correctly but still needing a resize pass.
         ui.run_javascript(
             """
 (() => {
