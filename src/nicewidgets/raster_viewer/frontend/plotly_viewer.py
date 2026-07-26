@@ -149,6 +149,28 @@ class PlotlyRasterViewer:
 
     Converts Plotly/NiceGUI events to the backend service API. Row/column
     bounds live in the backend; plot coordinates use :class:`PlotlyCoordTransform`.
+
+    Typical host loop:
+
+    ```python
+    viewer = PlotlyRasterViewer()
+    plot = viewer.build()                      # once, inside a NiceGUI slot
+    plot.classes('w-full h-[65vh]')
+
+    await viewer.set_data(plane, grid=grid)    # per dataset (full reset)
+    await viewer.swap_slice_plane(...)         # per Z/T/channel scrub (keeps viewport)
+
+    await viewer.set_heatmap_style(colorscale=..., zmin=..., zmax=...)
+    viewer.set_rois([...]); viewer.select_roi(roi_id)
+    await viewer.set_x_axis_range(x_min=..., x_max=...)
+    ```
+
+    The first ``set_data`` must run after the Plotly element exists in the
+    browser; hosts typically trigger it from a one-shot ``plotly_afterplot``
+    event handler (see ``examples/raster_viewer/demo_controller.py``).
+
+    All coordinates in the public API are plot physical coordinates
+    (pixel index times ``dx``/``dy`` from :class:`RasterGridSpec`).
     """
 
     def __init__(

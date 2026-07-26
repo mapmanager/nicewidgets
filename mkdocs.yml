@@ -63,10 +63,5 @@ exclude_docs: |
 
 nav:
   - Home: index.md
-  - Guide:
-      - Overview: guide/overview.md
-      - Examples: guide/examples.md
-  - Developer:
-      - developers/index.md
-      - Contributing: developers/contributing.md
+  - Examples: guide/examples.md
   - API notes: api/widget-api.md

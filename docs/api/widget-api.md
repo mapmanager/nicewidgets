@@ -6,8 +6,8 @@ NiceWidgets provides reusable NiceGUI widgets for scientific and desktop
 applications. The widgets should be framework-level building blocks, not
 application-specific orchestration.
 
-CloudScope is one known consumer. This document records the public widget
-contracts those consumers rely on.
+[CloudScope](https://mapmanager.github.io/cloudscope/) is one known consumer.
+This document records the public widget contracts consumers rely on.
 
 Design rule:
 
@@ -19,13 +19,6 @@ domain packages own domain interpretation.
 
 ## PlotlyRasterViewer
 
-Used by:
-
-```text
-PrimaryImageView
-ReferenceImageView
-```
-
 Responsibilities:
 
 ```text
@@ -36,7 +29,8 @@ Responsibilities:
 - expose future axis range callbacks for linked views
 ```
 
-CloudScope should call public methods only. It should not mutate internal Plotly dictionaries directly except through the widget API.
+External callers should call public methods only. They should not mutate
+internal Plotly dictionaries directly except through the widget API.
 
 ## Plotly update policy
 
@@ -50,7 +44,7 @@ Plotly.relayout(..., {shapes: [...]})
 
 The widget should own this implementation detail.
 
-CloudScope should simply call:
+External callers should simply call:
 
 ```text
 viewer.set_rois(...)
@@ -144,11 +138,11 @@ This rule prevents expensive redraws and avoids resending large image payloads.
 Planned editing flow:
 
 ```text
-CloudScope enters ROI edit mode
+application enters ROI edit mode
 PlotlyRasterViewer enables selected shape editing
 user drags/resizes shape
 widget emits preview bounds
-CloudScope controller stores pending bounds
+application controller stores pending bounds
 toolbar OK commits
 cancel restores model shapes
 ```
@@ -161,15 +155,9 @@ set_roi_editing(enabled, roi_id)
 get_current_roi_bounds(roi_id)
 ```
 
-CloudScope should not parse raw Plotly relayout payloads if nicewidgets can hide that complexity.
+External callers should not parse raw Plotly relayout payloads if nicewidgets can hide that complexity.
 
 ## EChartWidget
-
-Used by:
-
-```text
-AcqAnalysisPlotView
-```
 
 Responsibilities:
 
@@ -189,11 +177,12 @@ set_x_axis_limits(x_min, x_max) -> None
 reset_x_axis_limits() -> None
 ```
 
-CloudScope should pass `AnalysisPlotData` from acqstore directly into EChartWidget. It should not construct low-level ECharts options except through widget APIs.
+External callers should pass prepared series data into EChartWidget. They should
+not construct low-level ECharts options except through widget APIs.
 
 ## Axis range linking
 
-CloudScope needs the primary image x-axis and analysis plot x-axis linked.
+Applications may need a primary image x-axis and an analysis plot x-axis linked.
 
 nicewidgets responsibilities:
 
@@ -207,14 +196,14 @@ EChartWidget:
   accept programmatic x-axis range updates
 ```
 
-CloudScope responsibility:
+Application responsibility:
 
 ```text
 translate widget callbacks into app-level axis range events
 avoid feedback loops by tagging event source view_id
 ```
 
-Suggested CloudScope event:
+Suggested application event:
 
 ```text
 XAxisRangeChanged(source_view_id, x_min, x_max)
@@ -223,12 +212,6 @@ XAxisRangeChanged(source_view_id, x_min, x_max)
 This should be implemented after the widgets expose stable callback APIs.
 
 ## ImageToolbarWidget
-
-Used by:
-
-```text
-ImageToolbarView
-```
 
 Responsibilities:
 
@@ -239,7 +222,7 @@ Responsibilities:
 - emit widget-level toolbar intents
 ```
 
-CloudScope translates nicewidgets toolbar intents into CloudScope application intents.
+Applications translate nicewidgets toolbar intents into application intents.
 
 Example:
 
@@ -248,7 +231,7 @@ ImageToolbarRoiAddRequestIntent -> AddRoiIntent
 ImageToolbarSelectRoiIntent -> SelectRoiIntent
 ```
 
-The widget should not mutate acqstore or CloudScope state directly.
+The widget should not mutate application or domain state directly.
 
 ## Widget state APIs
 
@@ -281,11 +264,11 @@ Simple widget state updates should be synchronous where possible. Async widget A
 
 ### Axis linking is not finished
 
-Plotly and ECharts need stable range callback APIs before CloudScope should implement full axis linking.
+Plotly and ECharts need stable range callback APIs before applications should implement full axis linking.
 
-### Keep widgets CloudScope-agnostic
+### Keep widgets application-agnostic
 
-If a widget imports CloudScope events/controllers/state, that is an architecture smell.
+If a widget imports application events, controllers, or state, that is an architecture smell.
 
 ### Test widgets at option/model boundary
 

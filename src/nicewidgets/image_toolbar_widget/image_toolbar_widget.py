@@ -207,6 +207,23 @@ class ImageToolbarWidget:
     ) -> None:
         """Set file label, both option lists, and channel/ROI selection. Does not emit intents.
 
+        Resets ROI edit mode to idle. Both option lists are always required.
+
+        Validation rules:
+
+        - Channel: empty ``channel_options`` requires ``channel is None``;
+          non-empty requires a non-``None`` ``channel`` whose ``str(channel)``
+          appears in ``channel_options``.
+        - ROI: empty ``roi_options`` requires ``roi_id is None``; non-empty
+          requires a non-``None`` ``roi_id`` present in ``roi_options``.
+
+        Args:
+            file_id: Display identifier for the loaded file, or ``None``.
+            channel: Current channel, or ``None`` when no channels exist.
+            roi_id: Current ROI id, or ``None`` when no ROIs exist.
+            channel_options: All selectable channels as strings (e.g. ``['0', '1']``).
+            roi_options: All selectable ROI ids as ints.
+
         Raises:
             ValueError: If selections are inconsistent with option lists.
         """
@@ -226,7 +243,16 @@ class ImageToolbarWidget:
         self._apply_roi_mode_to_ui()
 
     def set_channel_options_ext(self, options: Sequence[str]) -> None:
-        """Replace channel select options. Raises if current channel missing from ``options``."""
+        """Replace channel select options without emitting intents.
+
+        Args:
+            options: New channel option strings.
+
+        Raises:
+            ValueError: If a channel is currently selected and its string form
+                is missing from ``options``. A ``None`` selection is allowed;
+                follow with :meth:`set_channel_ext` if a selection is needed.
+        """
         cur = self._channel_as_str(self._channel)
         validate_options_update_preserves_selection(field='channel', current_value_str=cur, new_options=options)
         with self._intent_suppressed():
@@ -236,7 +262,16 @@ class ImageToolbarWidget:
         self._apply_roi_mode_to_ui()
 
     def set_roi_options_ext(self, options: Sequence[int]) -> None:
-        """Replace ROI select options. Raises if current ROI missing from ``options``."""
+        """Replace ROI select options without emitting intents.
+
+        Args:
+            options: New ROI option ids.
+
+        Raises:
+            ValueError: If an ROI is currently selected and missing from
+                ``options``. A ``None`` selection is allowed; follow with
+                :meth:`set_roi_ext` if a selection is needed.
+        """
         cur = self._roi_id
         validate_options_update_preserves_int_selection(field='roi', current_value=cur, new_options=options)
         with self._intent_suppressed():
@@ -246,7 +281,19 @@ class ImageToolbarWidget:
         self._apply_roi_mode_to_ui()
 
     def set_roi_options_and_selection_ext(self, roi_options: Sequence[int], roi_id: int | None) -> None:
-        """Atomically set ROI options and selection. Does not emit intents."""
+        """Atomically set ROI options and selection. Does not emit intents.
+
+        Use after host-side ROI add/delete so options and selection stay
+        consistent in one update.
+
+        Args:
+            roi_options: All selectable ROI ids.
+            roi_id: Selected ROI id; must be ``None`` when ``roi_options`` is
+                empty, and present in ``roi_options`` otherwise.
+
+        Raises:
+            ValueError: If ``roi_id`` is inconsistent with ``roi_options``.
+        """
         validate_set_roi_options_and_selection_ext(roi_options, roi_id)
         with self._intent_suppressed():
             self._roi_options = list(roi_options)
@@ -256,7 +303,15 @@ class ImageToolbarWidget:
         self._apply_roi_mode_to_ui()
 
     def set_channel_ext(self, channel: int | None) -> None:
-        """Set channel selection. Raises if value not allowed for current ``channel_options``."""
+        """Set channel selection without emitting intents.
+
+        Args:
+            channel: New channel. With empty ``channel_options`` the value must
+                be ``None``; otherwise ``str(channel)`` must be in the options.
+
+        Raises:
+            ValueError: If the value is inconsistent with current options.
+        """
         validate_scalar_in_options(self._channel_as_str(channel), self._channel_options, field='channel value')
         with self._intent_suppressed():
             self._channel = channel
@@ -264,7 +319,15 @@ class ImageToolbarWidget:
         self._apply_roi_mode_to_ui()
 
     def set_roi_ext(self, roi_id: int | None) -> None:
-        """Set ROI selection. Raises if value not allowed for current ``roi_options``."""
+        """Set ROI selection without emitting intents.
+
+        Args:
+            roi_id: New ROI id. With empty ``roi_options`` the value must be
+                ``None``; otherwise it must be in the options.
+
+        Raises:
+            ValueError: If the value is inconsistent with current options.
+        """
         validate_scalar_int_in_options(roi_id, self._roi_options, field='roi_id')
         with self._intent_suppressed():
             self._roi_id = roi_id

@@ -5,14 +5,13 @@ hide:
 
 # NiceWidgets
 
-NiceWidgets is a Python package of reusable **NiceGUI** widgets for scientific
-and desktop applications. It provides Plotly-based raster viewers and plot
-widgets, AG Grid tables and trees, image toolbars, uploads, and related UI
-building blocks.
+NiceWidgets is a Python package of reusable [NiceGUI](https://nicegui.io/)
+widgets for scientific and desktop applications. It provides Plotly-based
+raster viewers and plot widgets, AG Grid tables and trees, image toolbars,
+uploads, and related UI building blocks.
 
-NiceWidgets is **not** the CloudScope application. CloudScope is one consumer of
-these widgets. Runtime code in this package does not import CloudScope or
-AcqStore.
+[CloudScope](https://mapmanager.github.io/cloudscope/) is an example GUI
+application that uses NiceWidgets.
 
 ## Install
 
@@ -21,6 +20,25 @@ git clone https://github.com/mapmanager/nicewidgets.git
 cd nicewidgets
 uv sync
 ```
+
+Optional desktop extras (`pyperclip`, `pyperclipimg`, `pywebview`):
+
+```bash
+uv sync --extra desktop
+```
+
+## Available widgets
+
+| Area | Role |
+|------|------|
+| `raster_viewer` | Plotly multiresolution raster viewer, ROI and trace overlays |
+| `plotly_plot` | General Plotly line/measurement plot widget |
+| `echart_widget` | ECharts line/plot widget |
+| `table_widget` / `tree_widget` | AG Grid table and tree wrappers |
+| `nicepool` | DataFrame-driven plot pool UI |
+| `image_toolbar_widget` / `contrast_widget` | Image toolbar and contrast controls |
+| `upload_widget` | File upload normalization |
+| `utils` | Logging, clipboard, desktop detection helpers |
 
 ## Quick start
 
@@ -42,10 +60,7 @@ table = TableWidget(
 )
 ```
 
-Import from concrete submodules. The package root does not re-export symbols.
-
 ## Next steps
 
-- [Package overview](guide/overview.md)
 - [Examples](guide/examples.md)
 - [Widget API notes](api/widget-api.md)

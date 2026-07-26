@@ -13,6 +13,10 @@ ROI_SHAPE_NAME_PREFIX = 'roi:'
 class RectRoiOverlay:
     """Rectangular ROI overlay in Plotly physical coordinates.
 
+    Physical coordinates are pixel indices scaled by the dataset grid spacing
+    (``column * dx`` for x, ``row * dy`` for y), matching the axes the raster
+    viewer displays. They are not raw pixel indices unless ``dx == dy == 1``.
+
     Args:
         roi_id: Stable backend ROI identifier.
         x0: First x coordinate in Plotly coordinate space.

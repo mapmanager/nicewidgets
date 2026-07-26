@@ -8,6 +8,24 @@ originating slice ndarray is supplied via :meth:`set_image_ext`.
 
 External callers use ``*_ext`` setters to push state without emitting intents
 (mirrors the :class:`nicewidgets.image_toolbar_widget.ImageToolbarWidget` pattern).
+
+Typical wiring to a raster viewer:
+
+```python
+def on_contrast(intent: ContrastChangedIntent) -> None:
+    colorscale = get_colorscale(intent.color_lut)  # LUT id -> Plotly colorscale
+    background_tasks.create(viewer.set_heatmap_style(
+        colorscale=colorscale,
+        zmin=float(intent.value_min),
+        zmax=float(intent.value_max),
+        preserve_viewport=True,
+    ))
+
+contrast = ContrastWidget(on_intent=on_contrast, auto_contrast_callback=my_percentile_clip)
+contrast.set_image_ext(plane)   # after each plane load; feeds bounds and Auto
+```
+
+See ``examples/raster_viewer/demo_controller.py`` for a runnable example.
 """
 
 from __future__ import annotations
