@@ -1,9 +1,16 @@
-"""Multi-channel raster display: models, RGB composition, and (later) coordinator.
+"""Multi-channel raster display: models, RGB composition, and coordinator.
 
-Phase 1 ships contracts + additive RGB composition. The NiceGUI coordinator
-:class:`MultiChannelRasterView` lands in a later phase; see package docs and
-``examples/raster_viewer``.
+- Phase 1: contracts + additive RGB composition
+- Phase 2: :class:`MultiChannelRasterView` (single / mosaic + linked viewport)
+- Phase 3: composite RGB pane (helpers already available)
+
+``MultiChannelRasterView`` is imported lazily so pure backend helpers (compose /
+models) can be tested without pulling NiceGUI.
 """
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from nicewidgets.raster_viewer.multichannel.compose import (
     CompositeChannelLimitError,
@@ -24,6 +31,9 @@ from nicewidgets.raster_viewer.multichannel.models import (
     default_tint_for_channel,
 )
 
+if TYPE_CHECKING:
+    from nicewidgets.raster_viewer.multichannel.view import MultiChannelRasterView as MultiChannelRasterView
+
 __all__ = [
     'CompositeChannelLimitError',
     'ChannelDisplayStyle',
@@ -31,6 +41,7 @@ __all__ = [
     'DEFAULT_CHANNEL_TINTS',
     'MAX_COMPOSITE_CHANNELS',
     'MosaicOrientation',
+    'MultiChannelRasterView',
     'MultiChannelRasterViewConfig',
     'RasterLayoutMode',
     'compose_rgb_png_data_uri',
@@ -40,3 +51,11 @@ __all__ = [
     'select_composite_planes',
     'validate_same_shape',
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name == 'MultiChannelRasterView':
+        from nicewidgets.raster_viewer.multichannel.view import MultiChannelRasterView
+
+        return MultiChannelRasterView
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

@@ -84,6 +84,8 @@ DisplayAxisRanges = tuple[tuple[float, float], tuple[float, float]]
 # Callback for user-driven x-axis range changes (relayout / double-click reset).
 # ``(None, None)`` means "auto / reset to full extent".
 OnPlotlyXRangeChanged = Callable[[float | None, float | None], None]
+# Full viewport callback: ``((x_lo, x_hi), (y_lo, y_hi))`` in plot physical units.
+OnPlotlyViewportChanged = Callable[[DisplayAxisRanges], None]
 OnRoiBoundsPreview = Callable[[int, float, float, float, float], None]
 
 _X_RANGE_ECHO_EPS = 1e-9
@@ -178,17 +180,22 @@ class PlotlyRasterViewer:
         *,
         display_options: PlotlyRasterViewerDisplayOptions | None = None,
         on_x_range_changed: OnPlotlyXRangeChanged | None = None,
+        on_viewport_changed: OnPlotlyViewportChanged | None = None,
         on_roi_bounds_preview: OnRoiBoundsPreview | None = None,
     ) -> None:
         self._plot: Element | None = None
         self._service: RasterViewService | None = None
         self._plotly_dict: dict[str, object] = {}
         self._on_x_range_changed = on_x_range_changed
+        self._on_viewport_changed = on_viewport_changed
         self._on_roi_bounds_preview = on_roi_bounds_preview
         # Last x-range applied via set_x_axis_range / set_data / double-click
         # reset; used to suppress echo relayouts that Plotly fires whenever
         # the x-axis range changes (whether user- or programmatic).
         self._last_applied_x_range: tuple[float | None, float | None] | None = None
+        # Last viewport emitted via ``on_viewport_changed`` (or applied
+        # programmatically); used to suppress follower/link echo loops.
+        self._last_emitted_viewport: DisplayAxisRanges | None = None
         self._current_bounds = RowColBounds(
             row_min=0.0,
             row_max=1.0,
@@ -385,6 +392,7 @@ if (!plotDiv || !plotDiv.data) return;
         display_axis_ranges = ((x_lo_data, x_hi_data), (y_lo_data, y_hi_data))
         self._last_applied_x_range = (x_lo_data, x_hi_data)
         self._last_display_axis_ranges = display_axis_ranges
+        self._last_emitted_viewport = display_axis_ranges
         self._last_applied_response = response
         self._plotly_dict = build_plotly_figure(
             response=response,
@@ -1480,25 +1488,47 @@ Plotly.react(plotDiv, plotDiv.data, plotDiv.layout, {json.dumps(config)});
         x_max: float,
         y_min: float,
         y_max: float,
+        refresh_raster: bool = False,
     ) -> None:
-        """Set visible axis ranges in **plot physical** coordinates (Plotly space)."""
+        """Set visible axis ranges in **plot physical** coordinates (Plotly space).
+
+        Args:
+            x_min: Minimum plot x value.
+            x_max: Maximum plot x value.
+            y_min: Minimum plot y value.
+            y_max: Maximum plot y value.
+            refresh_raster: When ``True``, schedule a debounced viewport settle so
+                pyramid/heatmap content matches the new window. Linked multi-pane
+                followers should pass ``True``; hosts that only restore axis chrome
+                may leave the default ``False``.
+        """
         if self._plot is None or self._transform is None:
             raise RuntimeError('Viewer must be built and data set before setting axis ranges.')
-
-        self._current_bounds = self._transform.plot_xy_ranges_to_row_col(
-            x_min,
-            x_max,
-            y_min,
-            y_max,
-        )
 
         x_lo = float(min(x_min, x_max))
         x_hi = float(max(x_min, x_max))
         y_lo = float(min(y_min, y_max))
         y_hi = float(max(y_min, y_max))
+        display_axis_ranges: DisplayAxisRanges = ((x_lo, x_hi), (y_lo, y_hi))
+        if self._last_display_axis_ranges is not None and _display_ranges_equal(
+            display_axis_ranges,
+            self._last_display_axis_ranges,
+        ):
+            self._last_applied_x_range = (x_lo, x_hi)
+            self._last_emitted_viewport = display_axis_ranges
+            return
+
+        self._current_bounds = self._transform.plot_xy_ranges_to_row_col(
+            x_lo,
+            x_hi,
+            y_lo,
+            y_hi,
+        )
+
         self._layout_pin_xy_ranges(x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi)
-        display_axis_ranges = ((x_lo, x_hi), (y_lo, y_hi))
         self._last_display_axis_ranges = display_axis_ranges
+        self._last_applied_x_range = (x_lo, x_hi)
+        self._last_emitted_viewport = display_axis_ranges
 
         js = f"""
 {self._js_plotly_graph_div()}
@@ -1507,9 +1537,11 @@ Plotly.relayout(plotDiv, {{
   'xaxis.autorange': false,
   'yaxis.range': [{json.dumps(y_lo)}, {json.dumps(y_hi)}],
   'yaxis.autorange': false
-}});
+  }});
 """
         self._plot.client.run_javascript(js, timeout=2.0)
+        if refresh_raster:
+            self._schedule_viewport_settle()
 
     async def set_x_axis_range(self, *, x_min: float, x_max: float) -> None:
         """Set visible **x** (plot row / physical-x) axis range without touching y.
@@ -1776,6 +1808,9 @@ Plotly.restyle(plotDiv, {{
             display_axis_ranges = ((x_lo_data, x_hi_data), (y_lo_data, y_hi_data))
             self._last_applied_x_range = (x_lo_data, x_hi_data)
             self._last_display_axis_ranges = display_axis_ranges
+            self._last_emitted_viewport = display_axis_ranges
+            if self._on_viewport_changed is not None:
+                self._on_viewport_changed(display_axis_ranges)
         if self._on_x_range_changed is not None:
             self._on_x_range_changed(None, None)
 
@@ -1845,6 +1880,7 @@ Plotly.restyle(plotDiv, {{
 
                 payload, display_axis_ranges = settled
                 self._last_display_axis_ranges = display_axis_ranges
+                self._emit_viewport_from_display(display_axis_ranges)
                 self._emit_x_range_from_display(display_axis_ranges)
                 await self._refresh_raster_for_viewport(payload, display_axis_ranges)
 
@@ -2097,6 +2133,24 @@ Plotly.restyle(plotDiv, {{
             'yaxis.range[0]': y_lo,
             'yaxis.range[1]': y_hi,
         }
+
+    def _emit_viewport_from_display(
+        self,
+        display_axis_ranges: DisplayAxisRanges,
+    ) -> None:
+        """Invoke ``on_viewport_changed`` from a live Plotly display viewport."""
+        if self._on_viewport_changed is None:
+            return
+        (x_lo, x_hi), (y_lo, y_hi) = display_axis_ranges
+        normalized: DisplayAxisRanges = (
+            (float(x_lo), float(x_hi)),
+            (float(y_lo), float(y_hi)),
+        )
+        last = self._last_emitted_viewport
+        if last is not None and _display_ranges_equal(last, normalized):
+            return
+        self._last_emitted_viewport = normalized
+        self._on_viewport_changed(normalized)
 
     def _emit_x_range_from_display(
         self,

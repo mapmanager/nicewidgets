@@ -1,7 +1,7 @@
-"""Demo controller wiring PlotlyRasterViewer, ImageToolbarWidget, and ContrastWidget.
+"""Demo controller wiring MultiChannelRasterView, toolbar, and ContrastWidget.
 
-This module owns demo state (current dataset, channel, in-memory ROIs) and
-translates widget intents into public viewer API calls. It follows the
+This module owns demo state (current dataset, active channel, in-memory ROIs)
+and translates widget intents into public coordinator APIs. It follows the
 nicewidgets host-application pattern:
 
 - User gestures arrive as frozen intent dataclasses via ``on_intent``.
@@ -35,10 +35,15 @@ from nicewidgets.image_toolbar_widget.intent import (
     ImageToolbarSelectChannelIntent,
     ImageToolbarSelectRoiIntent,
 )
-from nicewidgets.raster_viewer.backend.image_model import BackendImage
-from nicewidgets.raster_viewer.backend.pyramid import ImagePyramid
-from nicewidgets.raster_viewer.frontend.plotly_viewer import PlotlyRasterViewer
 from nicewidgets.raster_viewer.frontend.roi_overlay import RectRoiOverlay
+from nicewidgets.raster_viewer.multichannel import (
+    ChannelDisplayStyle,
+    ChannelPlane,
+    MultiChannelRasterView,
+    MultiChannelRasterViewConfig,
+    MosaicOrientation,
+    RasterLayoutMode,
+)
 from nicewidgets.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -53,10 +58,6 @@ def percentile_auto_contrast(
     """Return an integer intensity window via percentile clipping.
 
     Passed to :class:`ContrastWidget` as ``auto_contrast_callback``.
-
-    TODO: promote to a shared nicewidgets utility (for example
-    ``nicewidgets.contrast_widget.auto_contrast``) so demos and host
-    applications stop re-implementing percentile clipping.
 
     Args:
         plane: 2D image array supplied by the contrast widget.
@@ -74,7 +75,7 @@ def percentile_auto_contrast(
 
 
 class RasterDemoController:
-    """Own demo state and wire toolbar/contrast intents to the raster viewer.
+    """Own demo state and wire toolbar/contrast intents to MultiChannelRasterView.
 
     The catalog must provide ``names``, ``channels(name)``, ``grid(name)``,
     and ``get_plane(name, channel)`` (see ``sample_data.SampleDataCatalog``).
@@ -88,24 +89,35 @@ class RasterDemoController:
 
     def __init__(self, catalog, *, dark_mode: bool = False) -> None:
         self._catalog = catalog
-        self._viewer = PlotlyRasterViewer()
+        self._view = MultiChannelRasterView(
+            config=MultiChannelRasterViewConfig(
+                layout_mode='single',
+                mosaic_orientation='horizontal',
+                link_viewport=True,
+            ),
+        )
         self._toolbar: ImageToolbarWidget | None = None
         self._contrast: ContrastWidget | None = None
 
         self._dataset_name: str = catalog.names[0]
         self._channel: int = 0
         self._plane: np.ndarray | None = None
+        self._channel_styles: dict[int, ChannelDisplayStyle] = {}
         self._rois: dict[int, RectRoiOverlay] = {}
         self._selected_roi_id: int | None = None
         self._next_roi_id: int = 1
         self._initial_load_done = False
         self._dark_mode = bool(dark_mode)
-        self._viewer.set_dark_mode(self._dark_mode)
+        self._view.set_dark_mode(self._dark_mode)
+
+        self._layout_select: ui.select | None = None
+        self._orientation_select: ui.select | None = None
+        self._link_checkbox: ui.checkbox | None = None
 
     @property
-    def viewer(self) -> PlotlyRasterViewer:
-        """Return the wrapped raster viewer (for demo-only extra controls)."""
-        return self._viewer
+    def viewer(self) -> MultiChannelRasterView:
+        """Return the multi-channel coordinator (demo extra controls / x-range)."""
+        return self._view
 
     @property
     def dataset_name(self) -> str:
@@ -119,14 +131,10 @@ class RasterDemoController:
             enabled: Whether dark mode is enabled.
         """
         self._dark_mode = bool(enabled)
-        self._viewer.set_dark_mode(self._dark_mode)
+        self._view.set_dark_mode(self._dark_mode)
 
     def build(self) -> None:
-        """Build the toolbar row and the viewer in the current NiceGUI slot.
-
-        Neither widget owns a layout container; this controller places both on
-        one shared row (contrast pushed right) with the viewer below.
-        """
+        """Build toolbar, multichannel controls, contrast, and the coordinator."""
         with ui.row().classes('w-full items-center flex-wrap gap-1'):
             self._toolbar = ImageToolbarWidget(on_intent=self._on_toolbar_intent)
             with ui.element('div').classes('ml-auto'):
@@ -134,15 +142,41 @@ class RasterDemoController:
                     on_intent=self._on_contrast_intent,
                     auto_contrast_callback=percentile_auto_contrast,
                 )
-        # Widgets stay disabled until the first plane is loaded.
         self._contrast.set_enabled_ext(False)
         self._toolbar.set_enabled_ext(False)
 
-        plot = self._viewer.build()
-        plot.classes('w-full h-[65vh]')
-        # The first data load must wait for the Plotly element to exist in the
-        # browser; afterplot fires once the initial empty figure is drawn.
-        plot.on('plotly_afterplot', self._on_afterplot)
+        with ui.row().classes('w-full items-end gap-3 flex-wrap'):
+            self._layout_select = ui.select(
+                options={
+                    'single': 'Single channel',
+                    'mosaic': 'All channels (mosaic)',
+                },
+                value='single',
+                label='Layout',
+                on_change=self._on_layout_mode_change,
+            ).classes('w-56')
+            self._orientation_select = ui.select(
+                options={
+                    'horizontal': 'Side by side (1×N)',
+                    'vertical': 'Stacked (N×1)',
+                },
+                value='horizontal',
+                label='Mosaic orientation',
+                on_change=self._on_orientation_change,
+            ).classes('w-56')
+            self._link_checkbox = ui.checkbox(
+                'Link pan/zoom',
+                value=True,
+                on_change=lambda e: self._view.set_link_viewport(bool(e.value)),
+            )
+            self._orientation_select.set_enabled(False)
+
+        root = self._view.build()
+        root.classes('w-full')
+        # First data load waits until a pane Plotly element exists.
+        for plot in self._view._pane_plots.values():
+            plot.on('plotly_afterplot', self._on_afterplot)
+            break
 
     async def _on_afterplot(self, _event: object) -> None:
         if self._initial_load_done:
@@ -150,30 +184,78 @@ class RasterDemoController:
         self._initial_load_done = True
         await self.load_dataset(self._dataset_name)
 
+    async def _on_layout_mode_change(self, e) -> None:
+        """Rebuild panes in the UI event slot (do not wrap in background_tasks)."""
+        mode = str(e.value)
+        layout_mode: RasterLayoutMode = 'mosaic' if mode == 'mosaic' else 'single'
+        try:
+            await self._view.set_layout_mode(layout_mode)
+        except NotImplementedError as exc:
+            ui.notify(str(exc), type='warning')
+            return
+        if self._orientation_select is not None:
+            self._orientation_select.set_enabled(layout_mode == 'mosaic')
+
+    async def _on_orientation_change(self, e) -> None:
+        """Rebuild mosaic orientation in the UI event slot."""
+        orientation = str(e.value)
+        value: MosaicOrientation = (
+            'vertical' if orientation == 'vertical' else 'horizontal'
+        )
+        await self._view.set_mosaic_orientation(value)
+
     # -- Dataset / channel loading ----------------------------------------------------
 
+    def _build_planes(self, name: str) -> list[ChannelPlane]:
+        planes: list[ChannelPlane] = []
+        for channel in self._catalog.channels(name):
+            data = self._catalog.get_plane(name, channel)
+            style = self._channel_styles.get(channel, ChannelDisplayStyle())
+            planes.append(
+                ChannelPlane(
+                    channel_id=channel,
+                    data=data,
+                    style=style,
+                    label=str(channel),
+                )
+            )
+        return planes
+
     async def load_dataset(self, name: str) -> None:
-        """Load ``name`` at channel 0, clearing ROIs and resetting the viewport."""
+        """Load all channels of ``name``, clearing ROIs and resetting the viewport."""
         self._dataset_name = name
         self._channel = 0
         self._rois.clear()
         self._selected_roi_id = None
-        self._viewer.set_rois([])
+        self._channel_styles.clear()
+        self._view.set_rois([])
 
-        plane = self._catalog.get_plane(name, self._channel)
+        planes = self._build_planes(name)
         grid = self._catalog.grid(name)
-        self._plane = plane
-        logger.info(f'load_dataset: {name!r} shape={plane.shape} dx={grid.dx} dy={grid.dy}')
-        await self._viewer.set_data(plane, grid=grid)
+        self._plane = planes[0].data if planes else None
+        logger.info(
+            'load_dataset: %r channels=%s shape=%s dx=%s dy=%s',
+            name,
+            [p.channel_id for p in planes],
+            None if self._plane is None else self._plane.shape,
+            grid.dx,
+            grid.dy,
+        )
+        await self._view.set_channels(planes, grid=grid)
+        await self._view.set_active_channel(self._channel)
 
-        # set_data resets the viewer to its default colorscale and full
-        # intensity window, so reseed the contrast widget to match.
         assert self._contrast is not None and self._toolbar is not None
-        self._contrast.set_image_ext(plane)
-        img_min, img_max = self._contrast.get_image_bounds()
-        self._contrast.set_lut_ext(DEFAULT_LUT)
-        self._contrast.set_range_ext(value_min=img_min, value_max=img_max)
-        self._contrast.set_enabled_ext(True)
+        if self._plane is not None:
+            self._contrast.set_image_ext(self._plane)
+            img_min, img_max = self._contrast.get_image_bounds()
+            self._contrast.set_lut_ext(DEFAULT_LUT)
+            self._contrast.set_range_ext(value_min=img_min, value_max=img_max)
+            self._contrast.set_enabled_ext(True)
+            self._channel_styles[self._channel] = ChannelDisplayStyle(
+                zmin=float(img_min),
+                zmax=float(img_max),
+                colorscale=get_colorscale(DEFAULT_LUT),
+            )
 
         channel_options = [str(c) for c in self._catalog.channels(name)]
         self._toolbar.set_file_ext(
@@ -186,29 +268,35 @@ class RasterDemoController:
         self._toolbar.set_enabled_ext(True)
 
     async def _change_channel(self, channel: int) -> None:
-        """Swap the displayed plane, preserving viewport, contrast, and ROIs."""
+        """Select active channel (single pane swap / contrast target in mosaic)."""
         self._channel = channel
         plane = self._catalog.get_plane(self._dataset_name, channel)
-        grid = self._catalog.grid(self._dataset_name)
         self._plane = plane
-        source = BackendImage(plane, grid=grid)
-        await self._viewer.swap_slice_plane(plane, grid=grid, pyramid=ImagePyramid(source))
+        # Coordinator rebuilds/reloads the single pane from stored planes.
+        await self._view.set_active_channel(channel)
         assert self._contrast is not None
-        # Keep the user's LUT/window; only refresh Auto-contrast source bounds.
         self._contrast.set_image_ext(plane)
+        style = self._channel_styles.get(channel)
+        if style is not None and style.zmin is not None and style.zmax is not None:
+            self._contrast.set_range_ext(
+                value_min=int(style.zmin),
+                value_max=int(style.zmax),
+            )
 
     # -- Contrast wiring ---------------------------------------------------------------
 
     def _on_contrast_intent(self, intent: ContrastChangedIntent) -> None:
-        """Apply LUT and intensity window in one browser round trip."""
+        """Apply LUT and intensity window to the active channel pane."""
         colorscale = get_colorscale(intent.color_lut)
+        style = ChannelDisplayStyle(
+            visible=True,
+            zmin=float(intent.value_min),
+            zmax=float(intent.value_max),
+            colorscale=colorscale,
+        )
+        self._channel_styles[self._channel] = style
         background_tasks.create(
-            self._viewer.set_heatmap_style(
-                colorscale=colorscale,
-                zmin=float(intent.value_min),
-                zmax=float(intent.value_max),
-                preserve_viewport=True,
-            )
+            self._view.set_channel_style(self._channel, style)
         )
 
     # -- Toolbar wiring ----------------------------------------------------------------
@@ -221,7 +309,7 @@ class RasterDemoController:
                     background_tasks.create(self._change_channel(channel))
             case ImageToolbarSelectRoiIntent(roi_id=roi_id):
                 self._selected_roi_id = roi_id
-                self._viewer.select_roi(roi_id)
+                self._view.select_roi(roi_id)
             case ImageToolbarRoiAddRequestIntent():
                 self._add_roi()
             case ImageToolbarRoiDeleteRequestIntent(roi_id=roi_id):
@@ -233,9 +321,6 @@ class RasterDemoController:
             case ImageToolbarRoiApplyFullHeightIntent(roi_id=roi_id):
                 self._apply_full_extent(roi_id, axis='y')
             case ImageToolbarRoiEditSubmitIntent() | ImageToolbarRoiEditCancelIntent():
-                # This demo applies edits immediately. A real host application
-                # would stage pending bounds and commit on OK / restore on
-                # Cancel (see the widget-api docs).
                 pass
 
     # -- ROI helpers -------------------------------------------------------------------
@@ -269,18 +354,18 @@ class RasterDemoController:
         )
         self._rois[roi_id] = roi
         self._selected_roi_id = roi_id
-        self._viewer.add_roi(roi)
-        self._viewer.select_roi(roi_id)
+        self._view.add_roi(roi)
+        self._view.select_roi(roi_id)
         self._sync_roi_options()
 
     def _delete_roi(self, roi_id: int) -> None:
         if roi_id not in self._rois:
             return
         del self._rois[roi_id]
-        self._viewer.delete_roi(roi_id)
+        self._view.delete_roi(roi_id)
         remaining = sorted(self._rois)
         self._selected_roi_id = remaining[-1] if remaining else None
-        self._viewer.select_roi(self._selected_roi_id)
+        self._view.select_roi(self._selected_roi_id)
         self._sync_roi_options()
 
     def _apply_full_extent(self, roi_id: int, *, axis: str) -> None:
@@ -294,5 +379,4 @@ class RasterDemoController:
         else:
             updated = replace(roi, y0=0.0, y1=y_max)
         self._rois[roi_id] = updated
-        # add_roi replaces an existing overlay with the same roi_id.
-        self._viewer.add_roi(updated)
+        self._view.add_roi(updated)

@@ -18,7 +18,9 @@ Frontend (``nicewidgets.raster_viewer.frontend``):
 Multi-channel (``nicewidgets.raster_viewer.multichannel``):
 
 - models + additive RGB composition (Phase 1)
-- ``MultiChannelRasterView`` coordinator (later phase; demo is first consumer)
+- ``MultiChannelRasterView`` coordinator: single / mosaic + linked viewport
+  (Phase 2; ``examples/raster_viewer`` is the first consumer)
+- composite RGB pane (Phase 3)
 
 Design goals
 ------------
