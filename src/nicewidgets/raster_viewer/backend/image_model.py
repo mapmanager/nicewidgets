@@ -7,7 +7,7 @@ from typing import Literal
 
 import numpy as np
 
-RenderMode = Literal['image_png', 'heatmap_z']
+RenderMode = Literal['image_png', 'heatmap_z', 'image_rgb']
 
 
 @dataclass(frozen=True)
@@ -146,6 +146,8 @@ class RenderResponse:
         dy: Plot-y step per raster row of the returned image (physical).
         png_data_uri: PNG data URI for ``image_png`` mode.
         z: Numeric 2D array for ``heatmap_z`` mode (shape ``(ncols, nrows)`` for Plotly).
+        rgb: Uint8 RGB array for ``image_rgb`` mode, Plotly image orientation
+            ``(ncols, nrows, 3)`` (plot-y, plot-x, channel).
         zmin: Lower intensity bound for numeric rendering.
         zmax: Upper intensity bound for numeric rendering.
     """
@@ -161,6 +163,7 @@ class RenderResponse:
     dy: float
     png_data_uri: str | None = None
     z: np.ndarray | None = None
+    rgb: np.ndarray | None = None
     zmin: float | None = None
     zmax: float | None = None
 
@@ -175,6 +178,11 @@ class RenderResponse:
             if self.z is None
             else f"<ndarray shape={self.z.shape} dtype={self.z.dtype}>"
         )
+        rgb = (
+            None
+            if self.rgb is None
+            else f"<ndarray shape={self.rgb.shape} dtype={self.rgb.dtype}>"
+        )
         lines = [
             "RenderResponse(",
             f"  mode={self.mode!r},",
@@ -188,6 +196,7 @@ class RenderResponse:
             f"  dy={self.dy},",
             f"  png_data_uri={uri},",
             f"  z={z},",
+            f"  rgb={rgb},",
             f"  zmin={self.zmin},",
             f"  zmax={self.zmax},",
             ")",

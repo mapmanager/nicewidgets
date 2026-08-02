@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -86,6 +86,12 @@ DisplayAxisRanges = tuple[tuple[float, float], tuple[float, float]]
 OnPlotlyXRangeChanged = Callable[[float | None, float | None], None]
 # Full viewport callback: ``((x_lo, x_hi), (y_lo, y_hi))`` in plot physical units.
 OnPlotlyViewportChanged = Callable[[DisplayAxisRanges], None]
+# Optional settle refresh override (e.g. multi-channel RGB recompose).
+# Return ``True`` when the handler applied raster content (skip service refresh).
+OnRasterRefresh = Callable[
+    [PlotlyViewportPayload, DisplayAxisRanges],
+    Awaitable[bool],
+]
 OnRoiBoundsPreview = Callable[[int, float, float, float, float], None]
 
 _X_RANGE_ECHO_EPS = 1e-9
@@ -181,6 +187,7 @@ class PlotlyRasterViewer:
         display_options: PlotlyRasterViewerDisplayOptions | None = None,
         on_x_range_changed: OnPlotlyXRangeChanged | None = None,
         on_viewport_changed: OnPlotlyViewportChanged | None = None,
+        on_raster_refresh: OnRasterRefresh | None = None,
         on_roi_bounds_preview: OnRoiBoundsPreview | None = None,
     ) -> None:
         self._plot: Element | None = None
@@ -188,6 +195,7 @@ class PlotlyRasterViewer:
         self._plotly_dict: dict[str, object] = {}
         self._on_x_range_changed = on_x_range_changed
         self._on_viewport_changed = on_viewport_changed
+        self._on_raster_refresh = on_raster_refresh
         self._on_roi_bounds_preview = on_roi_bounds_preview
         # Last x-range applied via set_x_axis_range / set_data / double-click
         # reset; used to suppress echo relayouts that Plotly fires whenever
@@ -256,8 +264,8 @@ if (!plotDiv || !plotDiv.data) return;
 
     @property
     def has_data(self) -> bool:
-        """Return ``True`` when a dataset has been set."""
-        return self._service is not None
+        """Return ``True`` when a dataset (or RGB composite) has been set."""
+        return self._service is not None or self._transform is not None
 
     @property
     def plot(self) -> Element | None:
@@ -414,6 +422,53 @@ if (!plotDiv || !plotDiv.data) return;
         #     self._raster_trace_type(),
         # )
         return response
+
+    async def apply_rgb_response(
+        self,
+        response: RenderResponse,
+        *,
+        grid: RasterGridSpec,
+        shape: tuple[int, int],
+        display_axis_ranges: DisplayAxisRanges | None = None,
+        reset_uirevision: bool = False,
+    ) -> None:
+        """Apply an ``image_rgb`` response without a :class:`RasterViewService`.
+
+        Used by multi-channel composite mode. Clears any single-plane service so
+        settle refreshes go through ``on_raster_refresh`` when provided.
+
+        Args:
+            response: Must use ``mode='image_rgb'`` with ``rgb`` populated.
+            grid: Physical grid for the full source.
+            shape: Full-resolution ``(nrows, ncols)``.
+            display_axis_ranges: Optional viewport to preserve while swapping data.
+            reset_uirevision: When ``True``, rotate ``uirevision`` (full reset).
+        """
+        if response.mode != 'image_rgb':
+            raise ValueError(f'apply_rgb_response requires image_rgb, got {response.mode!r}')
+        if response.rgb is None:
+            raise ValueError('apply_rgb_response requires response.rgb')
+
+        self._cancel_viewport_settle()
+        self._service = None
+        self._display_options.square_plot = shape[0] == shape[1]
+        self._transform = PlotlyCoordTransform(
+            nrows=int(shape[0]),
+            ncols=int(shape[1]),
+            grid=grid,
+        )
+        self._square_plot_scaleratio = (
+            (float(shape[0]) * float(grid.dx)) / max(float(shape[1]) * float(grid.dy), 1e-12)
+        )
+        self._axis_title_texts = {'xaxis': grid.x_unit or '', 'yaxis': grid.y_unit or ''}
+        if reset_uirevision:
+            self._uirevision = self._new_uirevision()
+            self._heatmap_colorscale = DEFAULT_HEATMAP_COLORSCALE
+            self._contrast_zmin = None
+            self._contrast_zmax = None
+            self._plotly_trace_overlays.clear_overlays()
+
+        await self.apply_response(response, display_axis_ranges=display_axis_ranges)
 
     async def swap_slice_plane(
         self,
@@ -585,7 +640,15 @@ if (!plotDiv || !plotDiv.data) return;
         # client-owned x/y axis ranges are left untouched. Full figure rebuilds
         # remain the path for initial load, reset, ROI/layout changes, and
         # PNG<->heatmap trace-type switches.
-        if display_axis_ranges is not None and self._can_restyle_raster_trace(response, previous_trace_type):
+        #
+        # Preserve paths require an existing raster trace. Empty initial figures
+        # use layout range [0, 1]; preserving that on first composite paint is
+        # what made layout→composite open zoomed to one unit.
+        if (
+            display_axis_ranges is not None
+            and previous_trace_type is not None
+            and self._can_restyle_raster_trace(response, previous_trace_type)
+        ):
             # logger.debug('apply_response: restyle trace 0 (preserve browser axes)')
             self._current_bounds = response.bounds
             self._replace_local_raster_trace(next_plotly_dict)
@@ -598,7 +661,7 @@ if (!plotDiv || !plotDiv.data) return;
             await self._restyle_raster_trace0_from_plotly_dict()
             return
 
-        if display_axis_ranges is not None:
+        if display_axis_ranges is not None and previous_trace_type is not None:
             # logger.debug('apply_response: react data preserving browser layout')
             self._current_bounds = response.bounds
             self._replace_local_raster_trace(next_plotly_dict)
@@ -650,7 +713,12 @@ if (!plotDiv || !plotDiv.data) return;
         """Return whether a relayout refresh can update trace 0 without layout changes."""
         if self._plot is None:
             return False
-        expected_type = 'image' if response.mode == 'image_png' else 'heatmap' if response.mode == 'heatmap_z' else None
+        if response.mode in {'image_png', 'image_rgb'}:
+            expected_type = 'image'
+        elif response.mode == 'heatmap_z':
+            expected_type = 'heatmap'
+        else:
+            expected_type = None
         return expected_type is not None and previous_trace_type == expected_type
 
     def _replace_local_raster_trace(self, next_plotly_dict: dict[str, object]) -> None:
@@ -1790,18 +1858,38 @@ Plotly.restyle(plotDiv, {{
             )
 
     async def _on_plotly_doubleclick(self, event) -> None:
-        """Reset to full overview PNG (same path as initial load) and emit auto x-range."""
-        if self._service is None or self._plot is None:
+        """Reset to full overview and emit auto x-range."""
+        if self._plot is None or self._transform is None:
             return
 
         self._cancel_viewport_settle()
         self._uirevision = self._new_uirevision()
-        response = self._service.full_image_png(
-            display_style=self._display_style(),
-            max_pixels=self._overview_max_pixels,
-        )
-        # logger.debug('doubleclick reset: overview PNG level=%s', response.level)
-        await self.apply_response(response)
+
+        if self._service is not None:
+            response = self._service.full_image_png(
+                display_style=self._display_style(),
+                max_pixels=self._overview_max_pixels,
+            )
+            await self.apply_response(response)
+        elif self._on_raster_refresh is not None:
+            full = self._transform.full_row_col_bounds()
+            x_range = self._transform.row_col_to_plot_x_range(full)
+            y_range = self._transform.row_col_to_plot_y_range(full)
+            display_axis_ranges = (x_range, y_range)
+            width_px, height_px = self._last_viewport_size_px or (800, 600)
+            payload = PlotlyViewportPayload(
+                relayout=self._relayout_from_display_axis_ranges(display_axis_ranges),
+                width_px=width_px,
+                height_px=height_px,
+                # One figure rebuild (image + axes). Avoid restyle-under-zoom
+                # then separate relayout — that blank/flash sequence on RGB.
+                full_reset=True,
+            )
+            await self._on_raster_refresh(payload, display_axis_ranges)
+            self._current_bounds = full
+        else:
+            return
+
         if self._transform is not None:
             x_lo_data, x_hi_data = self._transform.row_col_to_plot_x_range(self._current_bounds)
             y_lo_data, y_hi_data = self._transform.row_col_to_plot_y_range(self._current_bounds)
@@ -1822,7 +1910,9 @@ Plotly.restyle(plotDiv, {{
         reads the live viewport, emits ``on_x_range_changed``, and refreshes
         raster content without touching layout.
         """
-        if self._service is None or self._plot is None or self._transform is None:
+        if self._plot is None or self._transform is None:
+            return
+        if self._service is None and self._on_raster_refresh is None:
             return
 
         raw_args = getattr(event, 'args', {}) or {}
@@ -1882,7 +1972,11 @@ Plotly.restyle(plotDiv, {{
                 self._last_display_axis_ranges = display_axis_ranges
                 self._emit_viewport_from_display(display_axis_ranges)
                 self._emit_x_range_from_display(display_axis_ranges)
-                await self._refresh_raster_for_viewport(payload, display_axis_ranges)
+                handled = False
+                if self._on_raster_refresh is not None:
+                    handled = bool(await self._on_raster_refresh(payload, display_axis_ranges))
+                if not handled:
+                    await self._refresh_raster_for_viewport(payload, display_axis_ranges)
 
                 if not self._viewport_settle_requested:
                     return

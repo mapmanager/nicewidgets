@@ -20,7 +20,7 @@ Multi-channel (``nicewidgets.raster_viewer.multichannel``):
 - models + additive RGB composition (Phase 1)
 - ``MultiChannelRasterView`` coordinator: single / mosaic + linked viewport
   (Phase 2; ``examples/raster_viewer`` is the first consumer)
-- composite RGB pane (Phase 3)
+- composite RGB pane via Plotly ``image`` HxWx3 (Phase 3; not PNG)
 
 Design goals
 ------------

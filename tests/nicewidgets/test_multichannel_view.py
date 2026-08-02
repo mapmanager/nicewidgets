@@ -86,10 +86,23 @@ def _planes(n: int = 2, shape: tuple[int, int] = (8, 8)) -> list[ChannelPlane]:
     return out
 
 
-def test_set_layout_mode_composite_not_implemented() -> None:
+def test_set_layout_mode_composite_rejects_too_many_visible() -> None:
+    from nicewidgets.raster_viewer.multichannel import CompositeChannelLimitError
+
     view = MultiChannelRasterView()
-    with pytest.raises(NotImplementedError, match='Phase 3'):
+    view._planes = _planes(4)
+    with pytest.raises(CompositeChannelLimitError):
         asyncio.run(view.set_layout_mode('composite'))
+
+
+def test_wanted_viewer_keys_composite() -> None:
+    from nicewidgets.raster_viewer.multichannel.view import COMPOSITE_VIEWER_KEY
+
+    view = MultiChannelRasterView(
+        config=MultiChannelRasterViewConfig(layout_mode='composite')
+    )
+    view._planes = _planes(2)
+    assert view._wanted_viewer_keys() == {COMPOSITE_VIEWER_KEY}
 
 
 def test_set_link_viewport_updates_config() -> None:

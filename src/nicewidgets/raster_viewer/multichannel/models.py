@@ -35,11 +35,13 @@ class ChannelDisplayStyle:
         visible: Whether the channel contributes to mosaic and/or composite.
         zmin: Lower intensity window; ``None`` uses the plane min.
         zmax: Upper intensity window; ``None`` uses the plane max.
-        colorscale: Plotly colorscale for single/mosaic panes (not used by
-            additive RGB composite).
-        tint_rgb: Additive RGB tint in ``0..1`` for composite merge. ``None``
-            means assign the default R/G/B tint from ``channel_id`` at compose
-            time. Ignored when the channel is not visible.
+        colorscale: Plotly colorscale / LUT for single/mosaic panes and for
+            composite RGB sampling (intensity → RGB, then additive merge).
+        tint_rgb: Optional additive RGB tint in ``0..1``. When set, composite
+            uses grayscale×tint instead of sampling ``colorscale``. When
+            ``None`` and ``colorscale`` is grayscale, compose falls back to
+            :func:`default_tint_for_channel`. Ignored when the channel is not
+            visible.
     """
 
     visible: bool = True

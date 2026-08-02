@@ -1170,6 +1170,66 @@ def test_apply_response_reacts_on_trace_type_change_without_nicegui_update() -> 
     asyncio.run(run())
 
 
+def test_apply_response_first_paint_rebuilds_instead_of_preserving_empty_layout() -> None:
+    """Empty initial figure must not keep placeholder [0, 1] axes via Plotly.react."""
+    from nicewidgets.raster_viewer.backend.image_model import RenderResponse
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.js_calls: list[str] = []
+
+        async def run_javascript(self, js: str, timeout: float) -> None:
+            self.js_calls.append(js)
+
+    class FakePlot:
+        def __init__(self) -> None:
+            self.id = 'plot-id'
+            self.figure = {}
+            self.updated = False
+            self.client = FakeClient()
+
+        def update(self) -> None:
+            self.updated = True
+
+    async def run() -> None:
+        viewer = PlotlyRasterViewer()
+        fake_plot = FakePlot()
+        viewer._plot = fake_plot
+        # Matches _build_initial_figure placeholder (no raster trace yet).
+        viewer._plotly_dict = {
+            'data': [],
+            'layout': {'xaxis': {'range': [0.0, 1.0]}, 'yaxis': {'range': [0.0, 1.0]}},
+            'config': {},
+        }
+        viewer._transform = PlotlyCoordTransform(nrows=10, ncols=10, grid=_grid())
+        rgb = np.zeros((10, 10, 3), dtype=np.uint8)
+        response = RenderResponse(
+            mode='image_rgb',
+            level=0,
+            bounds=RowColBounds(row_min=0, row_max=10, col_min=0, col_max=10),
+            shape=(10, 10),
+            grid=_grid(),
+            x0=0.0,
+            y0=0.0,
+            dx=2.0,
+            dy=4.0,
+            rgb=rgb,
+        )
+
+        await viewer.apply_response(
+            response,
+            display_axis_ranges=((0.0, 20.0), (0.0, 40.0)),
+        )
+
+        assert fake_plot.updated is True
+        assert fake_plot.client.js_calls == []
+        assert viewer.figure['layout']['xaxis']['range'] == [0.0, 20.0]
+        assert viewer.figure['layout']['yaxis']['range'] == [0.0, 40.0]
+        assert viewer.figure['data'][0]['type'] == 'image'
+
+    asyncio.run(run())
+
+
 def test_apply_response_restyles_same_image_trace_without_layout_update() -> None:
     """Relayout refresh with same image trace should restyle trace 0 only."""
     from nicewidgets.raster_viewer.backend.image_model import RenderResponse

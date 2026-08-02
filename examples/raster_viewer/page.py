@@ -34,8 +34,7 @@ def build_raster_demo_page(
     with ui.column().classes(f'w-full {height_class} gap-4 p-4'):
         ui.label('Raster Viewer Demo').classes('text-h5')
         ui.label(
-            'Multi-channel: single pane, mosaic (1×N / N×1), linked pan/zoom. '
-            'Composite RGB is next.'
+            'Multi-channel: single, mosaic (1×N / N×1), composite RGB, linked pan/zoom.'
         ).classes('text-body2 text-grey-8')
         controller.build()
 

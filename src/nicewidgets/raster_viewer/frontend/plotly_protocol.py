@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 from nicewidgets.plotly_axis_layout import resolve_plot_layout_margins
 from nicewidgets.raster_viewer.backend.image_model import RenderResponse, RowColBounds, ViewRequest, ViewportSize
 from nicewidgets.raster_viewer.frontend.plotly_coord_transform import PlotlyCoordTransform
@@ -38,11 +40,15 @@ class PlotlyViewportPayload:
         relayout: Plotly relayout payload from the browser.
         width_px: Visible plot width in pixels.
         height_px: Visible plot height in pixels.
+        full_reset: When ``True``, composite (and similar) handlers should do a
+            one-shot full figure rebuild with axes from the response, not a
+            restyle/relayout two-step that preserves the current browser layout.
     """
 
     relayout: dict[str, object]
     width_px: int
     height_px: int
+    full_reset: bool = False
 
 
 def build_plotly_figure(
@@ -100,6 +106,19 @@ def build_plotly_figure(
         data = [{
             'type': 'image',
             'source': response.png_data_uri,
+            'x0': trace_x0,
+            'y0': trace_y0,
+            'dx': response.dx,
+            'dy': response.dy,
+        }]
+
+    elif response.mode == 'image_rgb':
+        if response.rgb is None:
+            raise ValueError('RGB image response requires rgb array data.')
+        data = [{
+            'type': 'image',
+            'z': np.asarray(response.rgb).tolist(),
+            'colormodel': 'rgb',
             'x0': trace_x0,
             'y0': trace_y0,
             'dx': response.dx,

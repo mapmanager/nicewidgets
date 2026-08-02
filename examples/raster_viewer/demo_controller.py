@@ -39,6 +39,7 @@ from nicewidgets.raster_viewer.frontend.roi_overlay import RectRoiOverlay
 from nicewidgets.raster_viewer.multichannel import (
     ChannelDisplayStyle,
     ChannelPlane,
+    CompositeChannelLimitError,
     MultiChannelRasterView,
     MultiChannelRasterViewConfig,
     MosaicOrientation,
@@ -47,6 +48,18 @@ from nicewidgets.raster_viewer.multichannel import (
 from nicewidgets.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Default per-channel LUTs for multi-channel / composite demos (channel index → LUT id).
+_DEFAULT_CHANNEL_LUTS: tuple[str, ...] = ('Red', 'Green', 'Blue')
+_DATASET_CHANNEL_LUTS: dict[str, tuple[str, ...]] = {
+    'rr30a': ('Green', 'Magenta'),
+}
+
+
+def _default_lut_for_channel(channel_id: int, *, dataset_name: str | None = None) -> str:
+    """Return the demo default LUT identifier for ``channel_id``."""
+    table = _DATASET_CHANNEL_LUTS.get(dataset_name or '', _DEFAULT_CHANNEL_LUTS)
+    return table[int(channel_id) % len(table)]
 
 
 def percentile_auto_contrast(
@@ -103,6 +116,7 @@ class RasterDemoController:
         self._channel: int = 0
         self._plane: np.ndarray | None = None
         self._channel_styles: dict[int, ChannelDisplayStyle] = {}
+        self._channel_lut_ids: dict[int, str] = {}
         self._rois: dict[int, RectRoiOverlay] = {}
         self._selected_roi_id: int | None = None
         self._next_roi_id: int = 1
@@ -150,6 +164,7 @@ class RasterDemoController:
                 options={
                     'single': 'Single channel',
                     'mosaic': 'All channels (mosaic)',
+                    'composite': 'Composite RGB',
                 },
                 value='single',
                 label='Layout',
@@ -187,14 +202,23 @@ class RasterDemoController:
     async def _on_layout_mode_change(self, e) -> None:
         """Rebuild panes in the UI event slot (do not wrap in background_tasks)."""
         mode = str(e.value)
-        layout_mode: RasterLayoutMode = 'mosaic' if mode == 'mosaic' else 'single'
+        if mode == 'composite':
+            layout_mode: RasterLayoutMode = 'composite'
+        elif mode == 'mosaic':
+            layout_mode = 'mosaic'
+        else:
+            layout_mode = 'single'
         try:
             await self._view.set_layout_mode(layout_mode)
-        except NotImplementedError as exc:
+        except CompositeChannelLimitError as exc:
             ui.notify(str(exc), type='warning')
+            if self._layout_select is not None:
+                self._layout_select.value = self._view.config.layout_mode
             return
         if self._orientation_select is not None:
             self._orientation_select.set_enabled(layout_mode == 'mosaic')
+        if self._link_checkbox is not None:
+            self._link_checkbox.set_enabled(layout_mode == 'mosaic')
 
     async def _on_orientation_change(self, e) -> None:
         """Rebuild mosaic orientation in the UI event slot."""
@@ -228,7 +252,23 @@ class RasterDemoController:
         self._rois.clear()
         self._selected_roi_id = None
         self._channel_styles.clear()
+        self._channel_lut_ids.clear()
         self._view.set_rois([])
+
+        assert self._contrast is not None and self._toolbar is not None
+        # Seed per-channel windows + chromatic LUTs before the first paint so
+        # composite RGB uses Red/Green/Blue (not grayscale×tint).
+        for channel in self._catalog.channels(name):
+            plane = self._catalog.get_plane(name, channel)
+            self._contrast.set_image_ext(plane)
+            img_min, img_max = self._contrast.get_image_bounds()
+            lut_id = _default_lut_for_channel(channel, dataset_name=name)
+            self._channel_lut_ids[channel] = lut_id
+            self._channel_styles[channel] = ChannelDisplayStyle(
+                zmin=float(img_min),
+                zmax=float(img_max),
+                colorscale=get_colorscale(lut_id),
+            )
 
         planes = self._build_planes(name)
         grid = self._catalog.grid(name)
@@ -244,18 +284,15 @@ class RasterDemoController:
         await self._view.set_channels(planes, grid=grid)
         await self._view.set_active_channel(self._channel)
 
-        assert self._contrast is not None and self._toolbar is not None
         if self._plane is not None:
+            style = self._channel_styles[self._channel]
             self._contrast.set_image_ext(self._plane)
-            img_min, img_max = self._contrast.get_image_bounds()
-            self._contrast.set_lut_ext(DEFAULT_LUT)
-            self._contrast.set_range_ext(value_min=img_min, value_max=img_max)
-            self._contrast.set_enabled_ext(True)
-            self._channel_styles[self._channel] = ChannelDisplayStyle(
-                zmin=float(img_min),
-                zmax=float(img_max),
-                colorscale=get_colorscale(DEFAULT_LUT),
+            self._contrast.set_lut_ext(self._channel_lut_ids[self._channel])
+            self._contrast.set_range_ext(
+                value_min=int(style.zmin) if style.zmin is not None else 0,
+                value_max=int(style.zmax) if style.zmax is not None else 1,
             )
+            self._contrast.set_enabled_ext(True)
 
         channel_options = [str(c) for c in self._catalog.channels(name)]
         self._toolbar.set_file_ext(
@@ -282,6 +319,12 @@ class RasterDemoController:
                 value_min=int(style.zmin),
                 value_max=int(style.zmax),
             )
+        self._contrast.set_lut_ext(
+            self._channel_lut_ids.get(
+                channel,
+                _default_lut_for_channel(channel, dataset_name=self._dataset_name),
+            )
+        )
 
     # -- Contrast wiring ---------------------------------------------------------------
 
@@ -295,6 +338,7 @@ class RasterDemoController:
             colorscale=colorscale,
         )
         self._channel_styles[self._channel] = style
+        self._channel_lut_ids[self._channel] = intent.color_lut
         background_tasks.create(
             self._view.set_channel_style(self._channel, style)
         )
@@ -326,11 +370,15 @@ class RasterDemoController:
     # -- ROI helpers -------------------------------------------------------------------
 
     def _physical_extent(self) -> tuple[float, float]:
-        """Return ``(x_max, y_max)`` of the current plane in plot physical coordinates."""
+        """Return ``(x_max, y_max)`` of the current plane in plot physical coordinates.
+
+        Matches :class:`~nicewidgets.raster_viewer.frontend.plotly_coord_transform.PlotlyCoordTransform`:
+        plot-x spans ``nrows * dx``, plot-y spans ``ncols * dy``.
+        """
         assert self._plane is not None
         rows, cols = self._plane.shape
         grid = self._catalog.grid(self._dataset_name)
-        return float(cols) * float(grid.dx), float(rows) * float(grid.dy)
+        return float(rows) * float(grid.dx), float(cols) * float(grid.dy)
 
     def _sync_roi_options(self) -> None:
         assert self._toolbar is not None

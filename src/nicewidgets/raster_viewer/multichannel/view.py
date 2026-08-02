@@ -1,7 +1,7 @@
-"""NiceGUI coordinator for single / mosaic multi-channel raster display.
+"""NiceGUI coordinator for single / mosaic / composite multi-channel rasters.
 
-Owns one :class:`PlotlyRasterViewer` per visible pane, shares ROIs across panes,
-and optionally links pan/zoom. Composite RGB layout is Phase 3.
+Owns one :class:`PlotlyRasterViewer` per visible pane (or one RGB composite
+pane), shares ROIs across panes, and optionally links pan/zoom.
 """
 
 from __future__ import annotations
@@ -15,16 +15,24 @@ from nicegui import background_tasks, ui
 
 from nicewidgets.raster_viewer.backend.image_model import BackendImage, RasterGridSpec
 from nicewidgets.raster_viewer.backend.pyramid import ImagePyramid
+from nicewidgets.raster_viewer.frontend.plotly_coord_transform import PlotlyCoordTransform
 from nicewidgets.raster_viewer.frontend.plotly_display_options import (
     PlotlyRasterViewerDisplayOptions,
 )
+from nicewidgets.raster_viewer.frontend.plotly_protocol import PlotlyViewportPayload
 from nicewidgets.raster_viewer.frontend.plotly_viewer import (
     DisplayAxisRanges,
     OnPlotlyViewportChanged,
     PlotlyRasterViewer,
 )
 from nicewidgets.raster_viewer.frontend.roi_overlay import RectRoiOverlay
-from nicewidgets.raster_viewer.multichannel.compose import validate_same_shape
+from nicewidgets.raster_viewer.multichannel.compose import (
+    CompositeChannelLimitError,
+    DEFAULT_COMPOSITE_MAX_PIXELS,
+    build_image_rgb_response,
+    select_composite_planes,
+    validate_same_shape,
+)
 from nicewidgets.raster_viewer.multichannel.models import (
     ChannelDisplayStyle,
     ChannelPlane,
@@ -38,6 +46,9 @@ if TYPE_CHECKING:
     from nicegui.element import Element
 
 logger = get_logger(__name__)
+
+# Sentinel viewer key for the composite RGB pane.
+COMPOSITE_VIEWER_KEY = -2
 
 
 class MultiChannelRasterView:
@@ -127,13 +138,12 @@ class MultiChannelRasterView:
         is created in a valid slot. Reloads channel data after rebuild.
 
         Raises:
-            NotImplementedError: If ``mode == 'composite'`` (Phase 3).
+            CompositeChannelLimitError: If ``composite`` would use more than
+                three visible channels.
         """
-        if mode == 'composite':
-            raise NotImplementedError(
-                'composite layout is Phase 3; use compose_rgb_uint8 / '
-                'compose_rgb_png_data_uri until then'
-            )
+        if mode == 'composite' and self._planes:
+            # Validate before mutating config / tearing down panes.
+            select_composite_planes(self._planes)
         if mode == self._config.layout_mode:
             return
         self._config = replace(self._config, layout_mode=mode)
@@ -203,8 +213,7 @@ class MultiChannelRasterView:
             p.channel_id for p in plane_list
         }:
             self._active_channel_id = plane_list[0].channel_id if plane_list else None
-        # Pane identity follows visible channel ids; rebuild only when that set changes.
-        wanted = {p.channel_id for p in self._visible_planes_for_layout()}
+        wanted = self._wanted_viewer_keys()
         if wanted != set(self._viewers):
             self._rebuild_panes()
             await self._wait_for_panes_ready()
@@ -241,6 +250,9 @@ class MultiChannelRasterView:
             if a.channel_id == channel_id
         )
         self._planes = updated
+        if self._config.layout_mode == 'composite':
+            await self._load_composite_pane(reset=False)
+            return
         if visibility_changed and self._config.layout_mode == 'mosaic':
             self._rebuild_panes()
             await self._reload_after_rebuild(reset=False)
@@ -323,6 +335,8 @@ class MultiChannelRasterView:
     # -- internals ----------------------------------------------------------------
 
     def _visible_planes_for_layout(self) -> list[ChannelPlane]:
+        if self._config.layout_mode == 'composite':
+            return []
         if self._config.layout_mode == 'single':
             if self._active_channel_id is None:
                 return []
@@ -331,6 +345,11 @@ class MultiChannelRasterView:
                     return [plane]
             return []
         return [p for p in self._planes if p.style.visible]
+
+    def _wanted_viewer_keys(self) -> set[int]:
+        if self._config.layout_mode == 'composite':
+            return {COMPOSITE_VIEWER_KEY}
+        return {p.channel_id for p in self._visible_planes_for_layout()}
 
     def _rebuild_panes(self) -> None:
         """Recreate pane elements inside ``_panes_host`` (explicit slot).
@@ -342,9 +361,16 @@ class MultiChannelRasterView:
             return
         self._viewers.clear()
         self._pane_plots.clear()
-        planes = self._visible_planes_for_layout()
         with self._panes_host:
             self._panes_host.clear()
+            if self._config.layout_mode == 'composite':
+                if self._planes:
+                    self._mount_composite_pane()
+                else:
+                    self._mount_placeholder_pane()
+                return
+
+            planes = self._visible_planes_for_layout()
             # Placeholder pane so the host can arm afterplot before the first
             # ``set_channels`` (mirrors single-viewer demo timing).
             if not planes:
@@ -376,6 +402,23 @@ class MultiChannelRasterView:
         plot.on('plotly_afterplot', self._resolve_afterplot_future)
         self._viewers[-1] = viewer
         self._pane_plots[-1] = plot
+
+    def _mount_composite_pane(self) -> None:
+        with ui.column().classes('w-full min-w-0 gap-0'):
+            ui.label('Composite RGB').classes('text-caption text-grey-7')
+            viewer = PlotlyRasterViewer(
+                display_options=replace(
+                    self._display_options,
+                    theme='dark' if self._dark_mode else 'light',
+                ),
+                on_viewport_changed=self._on_composite_viewport_changed,
+                on_raster_refresh=self._composite_raster_refresh,
+            )
+            plot = viewer.build()
+            plot.classes('w-full h-[65vh]')
+            plot.on('plotly_afterplot', self._resolve_afterplot_future)
+        self._viewers[COMPOSITE_VIEWER_KEY] = viewer
+        self._pane_plots[COMPOSITE_VIEWER_KEY] = plot
 
     def _mount_pane(self, plane: ChannelPlane, *, fill_row: bool) -> None:
         channel_id = plane.channel_id
@@ -458,6 +501,9 @@ class MultiChannelRasterView:
     async def _load_all_panes(self, *, reset: bool) -> None:
         if self._grid is None:
             return
+        if self._config.layout_mode == 'composite':
+            await self._load_composite_pane(reset=reset)
+            return
         viewport = None if reset else self.get_viewport()
         for plane in self._visible_planes_for_layout():
             viewer = self._viewers.get(plane.channel_id)
@@ -486,9 +532,87 @@ class MultiChannelRasterView:
                 )
             viewer.set_rois(self._rois)
             viewer.select_roi(self._selected_roi_id)
-        if reset and viewport is None:
-            # After full reset, optionally re-sync followers is a no-op (one source).
-            pass
+
+    async def _load_composite_pane(self, *, reset: bool) -> None:
+        if self._grid is None:
+            return
+        viewer = self._viewers.get(COMPOSITE_VIEWER_KEY)
+        if viewer is None:
+            return
+        viewport = None if reset else self.get_viewport()
+        if viewport is None:
+            shape = validate_same_shape(self._planes)
+            transform = PlotlyCoordTransform(
+                nrows=shape[0],
+                ncols=shape[1],
+                grid=self._grid,
+            )
+            full = transform.full_row_col_bounds()
+            viewport = (
+                transform.row_col_to_plot_x_range(full),
+                transform.row_col_to_plot_y_range(full),
+            )
+        await self._apply_composite_viewport(viewport, reset_uirevision=reset)
+        viewer.set_rois(self._rois)
+        viewer.select_roi(self._selected_roi_id)
+
+    async def _apply_composite_viewport(
+        self,
+        viewport: DisplayAxisRanges,
+        *,
+        reset_uirevision: bool = False,
+    ) -> None:
+        if self._grid is None or not self._planes:
+            return
+        viewer = self._viewers.get(COMPOSITE_VIEWER_KEY)
+        if viewer is None:
+            return
+        shape = validate_same_shape(self._planes)
+        transform = PlotlyCoordTransform(
+            nrows=shape[0],
+            ncols=shape[1],
+            grid=self._grid,
+        )
+        (x_lo, x_hi), (y_lo, y_hi) = viewport
+        bounds = transform.plot_xy_ranges_to_row_col(x_lo, x_hi, y_lo, y_hi)
+        response = build_image_rgb_response(
+            self._planes,
+            grid=self._grid,
+            bounds=bounds,
+            max_pixels=DEFAULT_COMPOSITE_MAX_PIXELS,
+        )
+        await viewer.apply_rgb_response(
+            response,
+            grid=self._grid,
+            shape=shape,
+            display_axis_ranges=None if reset_uirevision else viewport,
+            reset_uirevision=reset_uirevision,
+        )
+
+    async def _composite_raster_refresh(
+        self,
+        payload: PlotlyViewportPayload,
+        display_axis_ranges: DisplayAxisRanges,
+    ) -> bool:
+        try:
+            # Double-click sets full_reset so image+axes land in one figure
+            # rebuild (same pattern as single-channel full_image_png). Settle
+            # zooms keep reset_uirevision=False (restyle; browser owns axes).
+            await self._apply_composite_viewport(
+                display_axis_ranges,
+                reset_uirevision=bool(payload.full_reset),
+            )
+        except CompositeChannelLimitError:
+            logger.exception('composite refresh failed: channel limit')
+            return True
+        except Exception:
+            logger.exception('composite refresh failed')
+            return True
+        return True
+
+    def _on_composite_viewport_changed(self, viewport: DisplayAxisRanges) -> None:
+        if self._on_viewport_changed is not None:
+            self._on_viewport_changed(viewport)
 
     def _on_pane_viewport_changed(
         self,
