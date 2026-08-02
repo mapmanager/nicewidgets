@@ -15,6 +15,11 @@ Frontend (``nicewidgets.raster_viewer.frontend``):
   ``await set_data(...)`` per dataset and public setters for contrast, ROIs,
   overlays, and axis ranges
 
+Multi-channel (``nicewidgets.raster_viewer.multichannel``):
+
+- models + additive RGB composition (Phase 1)
+- ``MultiChannelRasterView`` coordinator (later phase; demo is first consumer)
+
 Design goals
 ------------
 
