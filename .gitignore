@@ -1,5 +1,6 @@
 # Archives
 *.zip
+*.tif
 
 # MkDocs build output
 site/

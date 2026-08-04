@@ -1,8 +1,9 @@
 """Color lookup table options for the contrast widget.
 
-Maps human-friendly LUT names to Plotly colorscale strings or custom 2-stop
-lists. Channel-friendly named scales (``Red`` / ``Green`` / ``Blue``) map to
-multi-stop Plotly built-ins (``Reds`` / ``Greens`` / ``Blues``).
+Maps human-friendly LUT names to Plotly colorscale strings or custom stop
+lists. Channel-friendly named scales (``Red`` / ``Green`` / ``Blue`` /
+``Yellow`` / ``Magenta``) are used both for single-channel heatmaps and for
+multi-channel composite RGB sampling.
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ COLORSCALE_OPTIONS: list[dict[str, str]] = [
     {'label': 'Red', 'value': 'Red'},
     {'label': 'Green', 'value': 'Green'},
     {'label': 'Blue', 'value': 'Blue'},
+    {'label': 'Yellow', 'value': 'Yellow'},
+    {'label': 'Magenta', 'value': 'Magenta'},
 ]
 
 
@@ -51,18 +54,48 @@ def get_colorscale(name: str) -> str | list[list[float | str]]:
         name: LUT identifier from :data:`COLORSCALE_OPTIONS` values.
 
     Returns:
-        Plotly colorscale string for built-in scales, or a 2-stop list for the
-        custom ``inverted_grays`` LUT. Unknown names are returned unchanged so
-        downstream callers may pass through other Plotly colorscale names.
+        Plotly colorscale string for built-in scales, or a stop list for custom
+        LUTs. Unknown names are returned unchanged so downstream callers may
+        pass through other Plotly colorscale names.
     """
     if name == 'Gray':
         return 'Greys'
     if name == 'inverted_grays':
         return [[0, 'rgb(255,255,255)'], [1, 'rgb(0,0,0)']]
     if name == 'Red':
-        return 'Reds'
+        return [
+            [0.0, 'rgb(0,0,0)'],
+            [0.35, 'rgb(105,0,0)'],
+            [0.75, 'rgb(255,0,0)'],
+            [1.0, 'rgb(255,220,220)'],
+        ]
     if name == 'Green':
-        return 'Greens'
+        return [
+            [0.0, 'rgb(0,0,0)'],
+            [0.35, 'rgb(0,105,0)'],
+            [0.75, 'rgb(0,255,0)'],
+            [1.0, 'rgb(220,255,220)'],
+        ]
     if name == 'Blue':
-        return 'Blues'
+        return [
+            [0.0, 'rgb(0,0,0)'],
+            [0.35, 'rgb(0,0,105)'],
+            [0.75, 'rgb(0,0,255)'],
+            [1.0, 'rgb(220,220,255)'],
+        ]
+    # Multi-stop channel LUTs aligned with acqstore demo composite coloring.
+    if name == 'Yellow':
+        return [
+            [0.0, 'rgb(0,0,0)'],
+            [0.35, 'rgb(105,80,0)'],
+            [0.75, 'rgb(255,210,0)'],
+            [1.0, 'rgb(255,255,220)'],
+        ]
+    if name == 'Magenta':
+        return [
+            [0.0, 'rgb(0,0,0)'],
+            [0.35, 'rgb(95,0,105)'],
+            [0.75, 'rgb(255,0,220)'],
+            [1.0, 'rgb(255,230,255)'],
+        ]
     return name
