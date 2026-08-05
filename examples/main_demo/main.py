@@ -20,7 +20,8 @@ from nicegui import ui
 
 from examples.nicepool.page import build_nicepool_demo_page
 from examples.plotly_plot.page import build_plotly_plot_demo_page
-from examples.raster_viewer.page import build_raster_demo_page
+# Disabled in the combined demo; the standalone Plotly raster example remains available.
+# from examples.raster_viewer.page import build_raster_demo_page
 from examples.raster_viewer_widget.page import build_raster_widget_demo_page
 from examples.table_widget.page import build_table_demo_page
 from examples.tree_widget.page import build_tree_demo_page
@@ -37,11 +38,11 @@ DOCS_URL = 'https://mapmanager.github.io/nicewidgets/'
 _APP_DARK_MODE = True
 
 DEMO_ROUTES: tuple[tuple[str, str, str], ...] = (
-    (
-        '/raster',
-        'Raster Viewer',
-        'Multichannel raster display with toolbar, contrast, and ROI controls.',
-    ),
+    # (
+    #     '/raster',
+    #     'Raster Viewer',
+    #     'Multichannel raster display with toolbar, contrast, and ROI controls.',
+    # ),
     (
         '/raster-widget',
         'RasterViewerWidget',
@@ -161,10 +162,10 @@ def home_page() -> None:
                         ui.link('Open demo', path).classes('no-underline')
 
 
-@ui.page('/raster')
-def raster_page() -> None:
-    """Build the raster viewer route."""
-    build_demo_route(build_raster_demo_page)
+# @ui.page('/raster')
+# def raster_page() -> None:
+#     """Build the Plotly raster viewer route."""
+#     build_demo_route(build_raster_demo_page)
 
 
 @ui.page('/raster-widget')

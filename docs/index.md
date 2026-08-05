@@ -6,8 +6,8 @@ hide:
 # NiceWidgets
 
 NiceWidgets is a Python package of reusable [NiceGUI](https://nicegui.io/)
-widgets for scientific and desktop applications. It provides Plotly-based
-raster viewers and plot widgets, AG Grid tables and trees, image toolbars,
+widgets for scientific and desktop applications. It provides JavaScript image
+viewers and plot widgets, AG Grid tables and trees, image toolbars,
 uploads, and related UI building blocks.
 
 [CloudScope](https://mapmanager.github.io/cloudscope/) is an example GUI
@@ -31,8 +31,8 @@ uv sync --extra desktop
 
 | Area | Role |
 |------|------|
-| [`raster_viewer`](widgets/raster_viewer.md) | Plotly multiresolution raster viewer, ROI and trace overlays |
 | [`raster_viewer_widget`](widgets/raster_viewer_widget.md) | Canvas raster viewer for multidimensional, multichannel arrays |
+| [`raster_viewer`](widgets/raster_viewer.md) | Older standalone Plotly raster viewer, ROI and trace overlays |
 | [`plotly_plot`](widgets/plotly_plot.md) | General Plotly line/measurement plot widget |
 | [`table_widget`](widgets/table_widget.md) / [`tree_widget`](widgets/tree_widget.md) | AG Grid table and tree wrappers |
 | [`nicepool`](widgets/nicepool.md) | DataFrame-driven plot pool UI |

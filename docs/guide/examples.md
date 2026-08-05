@@ -17,9 +17,10 @@ uv run python -m examples.main_demo.main
 ```
 
 Open [http://localhost:8080](http://localhost:8080). The home page links to
-independent `/raster`, `/raster-widget`, `/table`, `/nicepool`, `/plotly`, and
-`/tree` routes. Separate routes keep the visualization demos isolated and
-provide stable deep links.
+independent `/raster-widget`, `/table`, `/nicepool`, `/plotly`, and `/tree`
+routes. Separate routes keep the visualization demos isolated and provide
+stable deep links. The older Plotly raster example remains independently
+runnable but is not mounted in the combined demo.
 
 The shared top toolbar shows the `NiceWidgets` brand, demo links, a Dark switch
 (Quasar chrome via `ui.dark_mode` plus each page's widget theme API), and a Docs
@@ -60,6 +61,8 @@ intensity range). It is organized as a template for host applications:
 - `demo_controller.py`: state plus intent-to-viewer wiring
 - `page.py`: reusable page layout and demo-only controls
 - `nicegui_raster_demo.py`: standalone route and `ui.run` entry point
+
+This older Plotly raster example is not mounted in the combined demo.
 
 ## RasterViewerWidget
 

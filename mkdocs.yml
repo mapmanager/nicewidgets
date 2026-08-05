@@ -68,8 +68,8 @@ nav:
       - Layout and sizing: guide/layout-and-sizing.md
   - Widgets:
       - widgets/index.md
-      - Raster viewer: widgets/raster_viewer.md
       - RasterViewerWidget: widgets/raster_viewer_widget.md
+      - Plotly raster viewer: widgets/raster_viewer.md
       - PlotlyPlotWidget: widgets/plotly_plot.md
       - NicePool: widgets/nicepool.md
       - TableWidget: widgets/table_widget.md

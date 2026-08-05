@@ -11,10 +11,11 @@ def test_main_demo_advertises_the_canvas_raster_widget_route() -> None:
     source = (
         Path(__file__).resolve().parents[3] / "examples" / "main_demo" / "main.py"
     ).read_text()
-    assert "'/raster'," in source
     assert "'/raster-widget'," in source
     assert "'RasterViewerWidget'," in source
     assert "build_demo_route(build_raster_widget_demo_page)" in source
+    assert "# from examples.raster_viewer.page import build_raster_demo_page" in source
+    assert "# @ui.page('/raster')" in source
 
 
 def test_raster_widget_page_builder_accepts_shared_shell_state() -> None:

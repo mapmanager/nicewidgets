@@ -1,4 +1,8 @@
-# Raster viewer
+# Plotly raster viewer
+
+This older Plotly implementation remains independently runnable and supported,
+but is not mounted in the combined demo. For the primary JavaScript canvas
+image viewer, see [`RasterViewerWidget`](raster_viewer_widget.md).
 
 `PlotlyRasterViewer` displays multiresolution 2D rasters in NiceGUI with ROI and
 trace overlays, contrast-friendly updates, and a built-in context menu.
