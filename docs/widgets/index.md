@@ -8,6 +8,7 @@ NiceGUI host application: construction, configuration, and the public API.
 | Widget | Role |
 |--------|------|
 | [Raster viewer](raster_viewer.md) | Multiresolution Plotly image viewer |
+| [RasterViewerWidget](raster_viewer_widget.md) | Canvas viewer with channels, planes, ROIs, and X/Y overlays |
 | [PlotlyPlotWidget](plotly_plot.md) | Scientific traces and measurements |
 | [NicePool](nicepool.md) | DataFrame-driven plot pool |
 | [TableWidget](table_widget.md) | AG Grid table |

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  echo "Usage: $0 {web|app}" >&2
+  exit 2
+fi
+
+case "$1" in
+  web|app)
+    export RASTER_VIEWER_RUN_MODE="$1"
+    ;;
+  *)
+    echo "Unknown mode '$1'; expected 'web' or 'app'." >&2
+    exit 2
+    ;;
+esac
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+project_root="$(dirname "$script_dir")"
+cd "$project_root"
+exec uv run python -m examples.raster_viewer_widget.main

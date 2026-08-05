@@ -27,8 +27,8 @@ classifiers = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    # NiceGUI 3.14+ matches the CloudScope floor after the Jul 2026 bump from 3.10.
-    "nicegui>=3.14.0",
+    # RasterViewerWidget is developed and tested against the NiceGUI 3.15 API.
+    "nicegui>=3.15.0",
     # Conservative floors: APIs used are longstanding; do not mirror lockfile tips.
     "numpy>=1.26.0",
     "pandas>=2.0.0",
@@ -57,15 +57,22 @@ docs = [
     "pymdown-extensions",
 ]
 dev = [
+    "mypy>=1.17,<2",
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.15.11",
 ]
+raster-viewer-demo = [
+    "tifffile>=2025.6,<2027",
+]
+
+[tool.uv]
+default-groups = ["dev", "raster-viewer-demo"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 addopts = "-ra"
 markers = [
     "desktop_extra: requires optional [desktop] extras (pyperclip, pyperclipimg, pywebview)",
@@ -92,6 +99,19 @@ ignore = ["I001"]
 [tool.ruff.format]
 quote-style = "single"
 indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = [
+    "src/nicewidgets/raster_viewer_widget",
+    "examples/raster_viewer_widget",
+    "tests/nicewidgets/raster_viewer_widget",
+]
+
+[[tool.mypy.overrides]]
+module = ["nicewidgets.*"]
+follow_untyped_imports = true
 
 [project.urls]
 Homepage = "https://github.com/mapmanager/nicewidgets"

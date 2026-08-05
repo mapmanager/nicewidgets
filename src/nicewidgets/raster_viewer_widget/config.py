@@ -1,0 +1,58 @@
+"""Initial presentation configuration for the NiceGUI raster viewer."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+
+
+class ViewerTheme(StrEnum):
+    """Supported viewer chrome themes."""
+
+    DARK = "dark"
+    LIGHT = "light"
+
+
+class ViewerLayout(StrEnum):
+    """Supported initial multi-channel layouts."""
+
+    AUTO = "auto"
+    SIDE = "side"
+    STACK = "stack"
+    SINGLE = "single"
+    COMPOSITE = "composite"
+
+
+@dataclass(frozen=True, slots=True)
+class RasterViewerConfig:
+    """Configure initial viewer presentation without owning dataset state.
+
+    Attributes:
+        theme: Initial light or dark viewer chrome theme.
+        layout: Initial channel layout; ``auto`` preserves viewer defaults.
+        axes_visible: Whether image axes are initially visible.
+        rois_visible: Whether ROI overlays are initially visible.
+        channel_toolbars_visible: Whether each pane initially shows its header
+            toolbar containing channel controls and Copy view.
+        invert_slice_wheel: Whether Alt/Option+wheel up moves toward plane zero
+            and wheel down moves toward the maximum. It targets Z when present,
+            otherwise T, and does not change ordinary wheel zoom.
+        wheel_zoom_factor: Multiplicative zoom applied for each wheel event.
+            Values closer to ``1.0`` zoom more slowly; for example, use ``1.03``
+            for gentler zoom. Valid values are greater than ``1.0`` and at most
+            ``2.0``. The default ``1.06`` is intentionally gentler than the
+            viewer's original hard-coded ``1.12``.
+    """
+
+    theme: ViewerTheme = ViewerTheme.DARK
+    layout: ViewerLayout = ViewerLayout.AUTO
+    axes_visible: bool = True
+    rois_visible: bool = True
+    channel_toolbars_visible: bool = True
+    invert_slice_wheel: bool = True
+    wheel_zoom_factor: float = 1.06
+
+    def __post_init__(self) -> None:
+        """Validate numeric interaction configuration."""
+        if not 1.0 < self.wheel_zoom_factor <= 2.0:
+            raise ValueError("wheel_zoom_factor must be greater than 1.0 and at most 2.0")

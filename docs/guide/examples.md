@@ -60,6 +60,18 @@ intensity range). It is organized as a template for host applications:
 - `page.py`: reusable page layout and demo-only controls
 - `nicegui_raster_demo.py`: standalone route and `ui.run` entry point
 
+## RasterViewerWidget
+
+```bash
+uv run python -m examples.raster_viewer_widget.main
+```
+
+This separate example exercises the canvas-based `RasterViewerWidget` with
+synthetic uint16 and float32 datasets, multichannel layouts, T/Z navigation,
+Sliding-Z projections, typed rectangle and line ROIs, and physical X/Y plot
+overlays. Optional TIFF data is documented in
+`examples/raster_viewer_widget/data/README.md`.
+
 ## NicePool
 
 ```bash

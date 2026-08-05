@@ -69,6 +69,7 @@ nav:
   - Widgets:
       - widgets/index.md
       - Raster viewer: widgets/raster_viewer.md
+      - RasterViewerWidget: widgets/raster_viewer_widget.md
       - PlotlyPlotWidget: widgets/plotly_plot.md
       - NicePool: widgets/nicepool.md
       - TableWidget: widgets/table_widget.md

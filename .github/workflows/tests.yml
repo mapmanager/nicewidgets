@@ -56,6 +56,12 @@ jobs:
       - name: Ruff
         run: uv run --no-sync ruff check .
 
+      - name: Mypy raster viewer widget
+        run: uv run --no-sync mypy
+
+      - name: Raster viewer widget JavaScript tests
+        run: node --test tests/nicewidgets/raster_viewer_widget/*.test.mjs
+
       - name: Compile examples
         run: uv run --no-sync python -m compileall -q examples
 

@@ -3,7 +3,7 @@
 [![Tests](https://github.com/mapmanager/nicewidgets/actions/workflows/tests.yml/badge.svg)](https://github.com/mapmanager/nicewidgets/actions/workflows/tests.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
 
-NiceWidgets is a Python package of **reusable NiceGUI widgets** for scientific and desktop applications: Plotly raster viewers, plot widgets, AG Grid tables and trees, toolbars, uploads, and related UI building blocks.
+NiceWidgets is a Python package of **reusable NiceGUI widgets** for scientific and desktop applications: canvas and Plotly raster viewers, plot widgets, AG Grid tables and trees, toolbars, uploads, and related UI building blocks.
 
 It depends on **NiceGUI**. It is **not** the CloudScope application, and it does **not** depend on CloudScope or AcqStore.
 
@@ -52,6 +52,7 @@ Runnable demos live under `examples/` (not installed with the wheel):
 ```bash
 uv run python examples/table_widget/demo_app.py
 uv run python examples/raster_viewer/nicegui_raster_demo.py
+uv run python -m examples.raster_viewer_widget.main
 ```
 
 ## Documentation
@@ -68,6 +69,14 @@ Published docs: https://mapmanager.github.io/nicewidgets/
 ```bash
 uv sync --group dev
 uv run pytest
+node --test tests/nicewidgets/raster_viewer_widget/*.test.mjs
+uv run mypy
+```
+
+The Selenium acceptance test remains an explicit, separate check:
+
+```bash
+./scripts/run_raster_viewer_browser_tests.sh
 ```
 
 ## Build the package
