@@ -155,5 +155,8 @@ def test_two_widgets_render_independently_and_replace_one_source(screen: Screen)
     screen.click("Clear first")
     screen.wait_for("first cleared")
     screen.wait_for(lambda: screen.selenium.execute_script(
-        "return document.querySelectorAll('.rv-root')[0].querySelectorAll('canvas').length === 0"
+        "const root = document.querySelectorAll('.rv-root')[0];"
+        "return root.querySelectorAll("
+        "'.rv-raster-canvas, .rv-xy-plot-canvas, .rv-roi-canvas'"
+        ").length === 0 && root.querySelector('.rv-range-popover').hidden"
     ))
