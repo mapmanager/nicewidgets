@@ -1,13 +1,15 @@
 /** Color lookup tables used by scalar and composite raster rendering. */
 
 export const LUT_LABELS = Object.freeze({
-  gray: 'Gray', red: 'Red', green: 'Green', cyan: 'Cyan', magenta: 'Magenta',
-  yellow: 'Yellow', fire: 'Fire', viridis: 'Viridis', magma: 'Magma',
+  gray: 'Gray', red: 'Red', green: 'Green', blue: 'Blue', cyan: 'Cyan',
+  magenta: 'Magenta', yellow: 'Yellow', fire: 'Fire', viridis: 'Viridis',
+  magma: 'Magma',
 });
 
 const STOPS = {
   gray: [[0,[0,0,0]],[1,[255,255,255]]],
   red: [[0,[0,0,0]],[1,[255,32,24]]], green: [[0,[0,0,0]],[1,[20,255,80]]],
+  blue: [[0,[0,0,0]],[1,[24,80,255]]],
   cyan: [[0,[0,0,0]],[1,[20,235,255]]], magenta: [[0,[0,0,0]],[1,[255,20,235]]],
   yellow: [[0,[0,0,0]],[1,[255,235,20]]],
   fire: [[0,[0,0,0]],[0.35,[220,0,0]],[0.7,[255,210,0]],[1,[255,255,255]]],
