@@ -17,8 +17,9 @@ uv run python -m examples.main_demo.main
 ```
 
 Open [http://localhost:8080](http://localhost:8080). The home page links to
-independent `/raster`, `/table`, `/nicepool`, `/plotly`, and `/tree` routes. Separate
-routes keep the Plotly and AG Grid demos isolated and provide stable deep links.
+independent `/raster`, `/raster-widget`, `/table`, `/nicepool`, `/plotly`, and
+`/tree` routes. Separate routes keep the visualization demos isolated and
+provide stable deep links.
 
 The shared top toolbar shows the `NiceWidgets` brand, demo links, a Dark switch
 (Quasar chrome via `ui.dark_mode` plus each page's widget theme API), and a Docs
@@ -71,6 +72,7 @@ synthetic uint16 and float32 datasets, multichannel layouts, T/Z navigation,
 Sliding-Z projections, typed rectangle and line ROIs, and physical X/Y plot
 overlays. Optional TIFF data is documented in
 `examples/raster_viewer_widget/data/README.md`.
+It is also mounted at `/raster-widget` in the combined demo app.
 
 ## NicePool
 

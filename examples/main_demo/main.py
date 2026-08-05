@@ -21,6 +21,7 @@ from nicegui import ui
 from examples.nicepool.page import build_nicepool_demo_page
 from examples.plotly_plot.page import build_plotly_plot_demo_page
 from examples.raster_viewer.page import build_raster_demo_page
+from examples.raster_viewer_widget.page import build_raster_widget_demo_page
 from examples.table_widget.page import build_table_demo_page
 from examples.tree_widget.page import build_tree_demo_page
 from nicewidgets.gui_defaults import setUpGuiDefaults
@@ -40,6 +41,11 @@ DEMO_ROUTES: tuple[tuple[str, str, str], ...] = (
         '/raster',
         'Raster Viewer',
         'Multichannel raster display with toolbar, contrast, and ROI controls.',
+    ),
+    (
+        '/raster-widget',
+        'RasterViewerWidget',
+        'Canvas raster display with channels, planes, ROIs, and X/Y overlays.',
     ),
     (
         '/plotly',
@@ -159,6 +165,12 @@ def home_page() -> None:
 def raster_page() -> None:
     """Build the raster viewer route."""
     build_demo_route(build_raster_demo_page)
+
+
+@ui.page('/raster-widget')
+def raster_widget_page() -> None:
+    """Build the canvas RasterViewerWidget route."""
+    build_demo_route(build_raster_widget_demo_page)
 
 
 @ui.page('/table')

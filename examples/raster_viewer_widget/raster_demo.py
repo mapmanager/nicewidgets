@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from nicegui import events, ui
+from nicegui import background_tasks, events, ui
 
 from examples.raster_viewer_widget.datasets import RasterChannel, RasterDataset, SyntheticDatasetFactory
 from examples.raster_viewer_widget.header import DemoHeader
@@ -325,6 +325,7 @@ class RasterViewerDemo:
         self._datasets = DemoDatasetCollection(
             SyntheticDatasetFactory(data_directory=data_directory).create_all()
         )
+        self._viewer: RasterViewerWidget | None = None
         LOGGER.info("Initialized raster demo with %d datasets", len(self._datasets.summaries()))
 
     @property
@@ -336,11 +337,35 @@ class RasterViewerDemo:
         """
         return self._datasets
 
-    def build_page(self) -> None:
-        """Build the NiceGUI page and mount the JavaScript raster viewer."""
-        header = DemoHeader()
-        with ui.row().classes("w-full justify-end"):
-            ui.link("Multi-widget test", "/multi-widget")
+    def set_dark_mode(self, enabled: bool) -> None:
+        """Apply the combined demo's theme to the mounted raster viewer.
+
+        Args:
+            enabled: True for dark viewer chrome; false for light chrome.
+        """
+        if self._viewer is not None:
+            theme = ViewerTheme.DARK if enabled else ViewerTheme.LIGHT
+            background_tasks.create(self._viewer.set_theme(theme))
+
+    def build_page(
+        self,
+        *,
+        embedded: bool = False,
+        dark_mode: bool = True,
+    ) -> RasterViewerDemo:
+        """Build the NiceGUI page and mount the JavaScript raster viewer.
+
+        Args:
+            embedded: Whether the shared main-demo shell owns page chrome.
+            dark_mode: Initial viewer theme when embedded.
+
+        Returns:
+            This themeable demo handle.
+        """
+        header = None if embedded else DemoHeader()
+        if not embedded:
+            with ui.row().classes("w-full justify-end"):
+                ui.link("Multi-widget test", "/multi-widget")
         choices = {item["id"]: item["label"] for item in self._datasets.summaries()}
         first_id = next(iter(choices))
         with ui.row().classes("items-center gap-4"):
@@ -370,21 +395,34 @@ class RasterViewerDemo:
             roi_controller_container = ui.row().classes(
                 "w-full items-center gap-1 flex-nowrap overflow-x-auto"
             )
+            splitter_height = "height: 100%; min-height: 520px" if embedded else (
+                "height: 72vh; min-height: 520px"
+            )
             splitter = (
                 ui.splitter(horizontal=True, value=78, limits=(35, 92))
-                .classes("w-full")
-                .style("height: 72vh; min-height: 520px")
+                .classes("w-full flex-1 min-h-0")
+                .style(splitter_height)
             )
             with splitter.before:
                 viewer = RasterViewerWidget(
                     source=self._datasets.source(first_id),
-                    config=RasterViewerConfig(theme=ViewerTheme(header.theme.value)),
+                    config=RasterViewerConfig(
+                        theme=(
+                            ViewerTheme.DARK
+                            if dark_mode
+                            else ViewerTheme.LIGHT
+                        )
+                        if header is None
+                        else ViewerTheme(header.theme.value)
+                    ),
                 )
             with splitter.after, ui.column().classes(
                 "w-full h-full items-center justify-center"
             ):
                 ui.label("Resize placeholder").classes("opacity-70")
-        header.bind_theme_change(viewer.set_theme)
+        self._viewer = viewer
+        if header is not None:
+            header.bind_theme_change(viewer.set_theme)
         with roi_controller_container:
             roi_controller = DemoRoiController(self._datasets, selector, viewer, first_id)
         xy_plot_revision = 0
@@ -588,3 +626,4 @@ class RasterViewerDemo:
         viewer.on_toolbar_action(handle_toolbar_action)
         viewer.on_plane_change(handle_plane_change)
         viewer.on_performance(handle_performance)
+        return self
