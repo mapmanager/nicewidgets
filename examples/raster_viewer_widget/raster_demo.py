@@ -19,6 +19,7 @@ from nicewidgets.raster_viewer_widget import (
     RasterViewerConfig,
     RasterViewerWidget,
     RectRoiBounds,
+    RoiHostMode,
     ViewerTheme,
     XYPlot,
     XYPlotMode,
@@ -141,7 +142,7 @@ class DemoDatasetCollection:
             dataset_id: Requested dataset identifier.
 
         Returns:
-            Stable logical indices accepted by ``ImageToolbarWidget``.
+            Stable zero-based logical channel indices for the dataset.
         """
         dataset = self.get_dataset(dataset_id)
         return tuple(range(len(dataset.channels)))
@@ -392,9 +393,6 @@ class RasterViewerDemo:
             xy_plot_status = ui.label("No plot").classes("opacity-70")
         status = ui.label("Viewer loading…")
         with ui.column().classes("w-full gap-1"):
-            roi_controller_container = ui.row().classes(
-                "w-full items-center gap-1 flex-nowrap overflow-x-auto"
-            )
             splitter_height = "height: 100%; min-height: 520px" if embedded else (
                 "height: 72vh; min-height: 520px"
             )
@@ -413,7 +411,8 @@ class RasterViewerDemo:
                             else ViewerTheme.LIGHT
                         )
                         if header is None
-                        else ViewerTheme(header.theme.value)
+                        else ViewerTheme(header.theme.value),
+                        roi_host_mode=RoiHostMode.DELEGATED,
                     ),
                 )
             with splitter.after, ui.column().classes(
@@ -423,8 +422,7 @@ class RasterViewerDemo:
         self._viewer = viewer
         if header is not None:
             header.bind_theme_change(viewer.set_theme)
-        with roi_controller_container:
-            roi_controller = DemoRoiController(self._datasets, selector, viewer, first_id)
+        roi_controller = DemoRoiController(self._datasets, selector, viewer, first_id)
         xy_plot_revision = 0
 
         async def load_selected_dataset(event: events.ValueChangeEventArguments[str]) -> None:

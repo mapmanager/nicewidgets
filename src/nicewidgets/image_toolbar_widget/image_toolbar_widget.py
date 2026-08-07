@@ -1,4 +1,11 @@
-"""NiceGUI image toolbar: file label, channel/ROI selects, ROI CRUD intents."""
+"""NiceGUI image toolbar: file label, channel/ROI selects, ROI CRUD intents.
+
+DEPRECATED (ROI chrome): Prefer the canvas ``raster_viewer_widget`` JS ROI
+toolbar (dropdown + add/delete/edit) for new work. CloudScope still uses this
+widget via ``ImageToolbarView`` during migration; do not remove the package
+until that wiring is retired. Demos under ``examples/raster_viewer_widget/``
+no longer mount this toolbar.
+"""
 
 from __future__ import annotations
 
@@ -45,6 +52,10 @@ class ImageToolbarMode(Enum):
 
 class ImageToolbarWidget:
     """Toolbar with file label, channel/ROI selects, and ROI edit controls.
+
+    DEPRECATED for ROI CRUD/select chrome: new hosts should use the JS ROI
+    strip inside ``RasterViewerWidget`` (``RoiHostMode.DELEGATED`` + request
+    hooks). Channel/file labeling may still be useful until those move.
 
     The widget does not own a layout container. Child controls are created in
     the caller's active NiceGUI slot so the parent fully controls layout (sit

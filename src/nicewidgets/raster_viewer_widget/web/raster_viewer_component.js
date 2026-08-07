@@ -28,6 +28,8 @@ export default {
     initialAxesVisible: {type: Boolean, default: true},
     initialRoisVisible: {type: Boolean, default: true},
     initialChannelToolbarsVisible: {type: Boolean, default: true},
+    initialRoiToolbarVisible: {type: Boolean, default: true},
+    roiHostMode: {type: String, default: 'local'},
     invertSliceWheel: {type: Boolean, default: true},
     wheelZoomFactor: {type: Number, default: 1.06},
     resourcePath: {type: String, required: true},
@@ -49,16 +51,19 @@ export default {
     async initializeViewer() {
       const stylesheetUrl = `${this.resourcePath}/raster-viewer.css`;
       await ensureStylesheet(stylesheetUrl);
-      const module = await import(`${this.resourcePath}/raster-viewer.js`);
+      const module = await import(`${this.resourcePath}/raster-viewer.js?v=roi-chrome-1`);
       this.viewer = new module.RasterViewer(this.$refs.host, {
         theme: this.initialTheme,
         invertSliceWheel: this.invertSliceWheel,
         wheelZoomFactor: this.wheelZoomFactor,
+        roiHostMode: this.roiHostMode,
+        roiToolbarVisible: this.initialRoiToolbarVisible,
       });
       if (this.descriptorUrl) await this.fetchAndLoad(this.descriptorUrl, this.viewer);
       this.viewer.setAxesVisible(this.initialAxesVisible);
       this.viewer.setRoisVisible(this.initialRoisVisible);
       this.viewer.setChannelToolbarsVisible(this.initialChannelToolbarsVisible);
+      this.viewer.setRoiToolbarVisible(this.initialRoiToolbarVisible);
       if (this.initialLayout !== 'auto') this.viewer.setLayout(this.initialLayout);
       return true;
     },
@@ -91,6 +96,9 @@ export default {
     async setRoisVisible(value) { return (await this.getViewer()).setRoisVisible(value); },
     async setChannelToolbarsVisible(value) {
       return (await this.getViewer()).setChannelToolbarsVisible(value);
+    },
+    async setRoiToolbarVisible(value) {
+      return (await this.getViewer()).setRoiToolbarVisible(value);
     },
     async setXRange(minimum, maximum) {
       return (await this.getViewer()).setXRange(minimum, maximum);

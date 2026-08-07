@@ -7,8 +7,11 @@ from nicewidgets.raster_viewer_widget.config import RasterViewerConfig
 
 def test_wheel_zoom_factor_defaults_to_slower_zoom() -> None:
     """Verify the public default replaces the original aggressive factor."""
-    assert RasterViewerConfig().wheel_zoom_factor == 1.06
-    assert RasterViewerConfig().channel_toolbars_visible is True
+    config = RasterViewerConfig()
+    assert config.wheel_zoom_factor == 1.06
+    assert config.channel_toolbars_visible is True
+    assert config.roi_toolbar_visible is True
+    assert config.roi_host_mode.value == "local"
 
 
 @pytest.mark.parametrize("value", [1.0, 0.9, 2.01])

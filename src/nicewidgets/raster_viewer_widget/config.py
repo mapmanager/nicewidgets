@@ -23,6 +23,19 @@ class ViewerLayout(StrEnum):
     COMPOSITE = "composite"
 
 
+class RoiHostMode(StrEnum):
+    """Whether JS ROI chrome mutates locally or only emits host requests.
+
+    Attributes:
+        LOCAL: Add/delete/edit chrome mutates the in-viewer ROI list (demo/mock).
+        DELEGATED: Chrome emits request events; the host validates and applies
+            silent ``viewer.rois`` commands.
+    """
+
+    LOCAL = "local"
+    DELEGATED = "delegated"
+
+
 @dataclass(frozen=True, slots=True)
 class RasterViewerConfig:
     """Configure initial viewer presentation without owning dataset state.
@@ -34,6 +47,9 @@ class RasterViewerConfig:
         rois_visible: Whether ROI overlays are initially visible.
         channel_toolbars_visible: Whether each pane initially shows its header
             toolbar containing channel controls and Copy view.
+        roi_toolbar_visible: Whether the top-toolbar ROI strip (dropdown + CRUD)
+            is initially visible.
+        roi_host_mode: Local mock mutation vs host-delegated request callbacks.
         invert_slice_wheel: Whether Alt/Option+wheel up moves toward plane zero
             and wheel down moves toward the maximum. It targets Z when present,
             otherwise T, and does not change ordinary wheel zoom.
@@ -49,6 +65,8 @@ class RasterViewerConfig:
     axes_visible: bool = True
     rois_visible: bool = True
     channel_toolbars_visible: bool = True
+    roi_toolbar_visible: bool = True
+    roi_host_mode: RoiHostMode = RoiHostMode.LOCAL
     invert_slice_wheel: bool = True
     wheel_zoom_factor: float = 1.06
 

@@ -32,6 +32,10 @@ PLANE_CHANGE_EVENT = "raster-plane-change"
 PERFORMANCE_EVENT = "raster-performance"
 ROI_SELECTED_EVENT = "raster-roi-select"
 ROI_CREATE_REQUESTED_EVENT = "raster-roi-create"
+ROI_ADD_REQUESTED_EVENT = "raster-roi-add-request"
+ROI_DELETE_REQUESTED_EVENT = "raster-roi-delete-request"
+ROI_EDIT_REQUESTED_EVENT = "raster-roi-edit-request"
+ROI_EDIT_CANCEL_REQUESTED_EVENT = "raster-roi-edit-cancel-request"
 ROI_EDIT_COMMITTED_EVENT = "raster-roi-edit-commit"
 ROI_STATE_CHANGE_EVENT = "raster-roi-state-change"
 
@@ -236,6 +240,44 @@ class RasterRoiCreateRequestedEvent(RasterEvent):
         if roi_type is RoiType.RECTROI:
             return RectRoiCreate(name, RectRoiBounds.from_mapping(data), note)
         return LineRoiCreate(name, LineEndpoints.from_mapping(data), note)
+
+
+class RasterRoiAddRequestedEvent(RasterEvent):
+    """Report a user request to add an ROI (host chooses identity and geometry)."""
+
+    @property
+    def preferred_type(self) -> RoiType:
+        """Return the preferred shape; hosts may ignore or reject it."""
+        value = self.payload.get("preferred_type", RoiType.RECTROI.value)
+        return RoiType(str(value))
+
+
+class RasterRoiDeleteRequestedEvent(RasterEvent):
+    """Report a user request to delete the selected ROI."""
+
+    @property
+    def roi_id(self) -> int:
+        """Return the ROI ID requested for deletion."""
+        return int(self.payload["roi_id"])
+
+
+class RasterRoiEditRequestedEvent(RasterEvent):
+    """Report a user request to enter ROI edit mode for one ROI."""
+
+    @property
+    def roi_id(self) -> int:
+        """Return the ROI ID requested for editing."""
+        return int(self.payload["roi_id"])
+
+
+class RasterRoiEditCancelRequestedEvent(RasterEvent):
+    """Report a user request to cancel an active ROI create/edit draft."""
+
+    @property
+    def roi_id(self) -> int | None:
+        """Return the draft ROI ID when editing an existing ROI."""
+        value = self.payload.get("roi_id")
+        return int(value) if value is not None else None
 
 
 class RasterRoiEditCommittedEvent(RasterEvent):

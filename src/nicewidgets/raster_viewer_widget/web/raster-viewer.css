@@ -70,6 +70,23 @@
   gap: 10px;
 }
 
+.rv-roi-toolbar {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.rv-roi-toolbar[hidden] {
+  display: none;
+}
+
+.rv-roi-select {
+  min-width: 5.5rem;
+  max-width: 9rem;
+}
+
 .rv-toolbar[hidden] {
   display: none;
 }
@@ -109,6 +126,16 @@
 .rv-copy-button svg {
   width: 15px;
   height: 15px;
+}
+
+.rv-icon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .rv-tooltip {

@@ -1,6 +1,6 @@
 """Reusable NiceGUI raster viewer package."""
 
-from .config import RasterViewerConfig, ViewerLayout, ViewerTheme
+from .config import RasterViewerConfig, RoiHostMode, ViewerLayout, ViewerTheme
 from .models import RasterChannelDisplay
 from .numpy_source import NumPyRasterSource
 from .roi import (
@@ -34,6 +34,7 @@ __all__ = [
     "RectRoiCreate",
     "Roi",
     "RoiCreate",
+    "RoiHostMode",
     "RoiInteractionState",
     "RoiType",
     "ViewerLayout",

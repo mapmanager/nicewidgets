@@ -18,8 +18,12 @@ from .events import (
     PERFORMANCE_EVENT,
     PLANE_CHANGE_EVENT,
     READY_EVENT,
+    ROI_ADD_REQUESTED_EVENT,
     ROI_CREATE_REQUESTED_EVENT,
+    ROI_DELETE_REQUESTED_EVENT,
+    ROI_EDIT_CANCEL_REQUESTED_EVENT,
     ROI_EDIT_COMMITTED_EVENT,
+    ROI_EDIT_REQUESTED_EVENT,
     ROI_SELECTED_EVENT,
     ROI_STATE_CHANGE_EVENT,
     TOOLBAR_ACTION_EVENT,
@@ -32,8 +36,12 @@ from .events import (
     RasterPerformanceEvent,
     RasterPlaneChangeEvent,
     RasterReadyEvent,
+    RasterRoiAddRequestedEvent,
     RasterRoiCreateRequestedEvent,
+    RasterRoiDeleteRequestedEvent,
+    RasterRoiEditCancelRequestedEvent,
     RasterRoiEditCommittedEvent,
+    RasterRoiEditRequestedEvent,
     RasterRoiSelectedEvent,
     RasterRoiStateChangeEvent,
     RasterToolbarActionEvent,
@@ -63,8 +71,11 @@ class RasterViewerWidget(ui.element, component="web/raster_viewer_component.js")
     registration.
 
     ROI mutations initiated by Python are silent. Only genuine browser user
-    interactions emit ROI callbacks, and creation/editing remains transactional
-    until Python validates the proposal and calls ``rois.complete_commit``.
+    interactions emit ROI callbacks. Instant add/delete and edit-start chrome
+    either mutate locally (``RoiHostMode.LOCAL``) or emit request events
+    (``RoiHostMode.DELEGATED``) until the host validates and calls silent
+    ``rois`` APIs. Creation/editing geometry remains transactional until Python
+    validates the proposal and calls ``rois.complete_commit``.
     """
 
     def __init__(
@@ -110,6 +121,8 @@ class RasterViewerWidget(ui.element, component="web/raster_viewer_component.js")
                 "initial-axes-visible": self._config.axes_visible,
                 "initial-rois-visible": self._config.rois_visible,
                 "initial-channel-toolbars-visible": self._config.channel_toolbars_visible,
+                "initial-roi-toolbar-visible": self._config.roi_toolbar_visible,
+                "roi-host-mode": self._config.roi_host_mode.value,
                 "invert-slice-wheel": self._config.invert_slice_wheel,
                 "wheel-zoom-factor": self._config.wheel_zoom_factor,
             }
@@ -374,6 +387,17 @@ class RasterViewerWidget(ui.element, component="web/raster_viewer_component.js")
         """
         return bool(await self._run("setChannelToolbarsVisible", visible))
 
+    async def set_roi_toolbar_visible(self, visible: bool) -> bool:
+        """Set top-toolbar ROI strip visibility (dropdown + CRUD controls).
+
+        Args:
+            visible: Whether the ROI chrome strip is shown.
+
+        Returns:
+            Applied visibility.
+        """
+        return bool(await self._run("setRoiToolbarVisible", visible))
+
     async def set_x_range(self, minimum: float, maximum: float) -> dict[str, float]:
         """Set the physical display-X range without changing the Y transform.
 
@@ -568,6 +592,40 @@ class RasterViewerWidget(ui.element, component="web/raster_viewer_component.js")
     ) -> RasterViewerWidget:
         """Register a user-originated ROI-selection callback."""
         return self._on_typed(ROI_SELECTED_EVENT, RasterRoiSelectedEvent, handler)
+
+    def on_roi_add_requested(
+        self, handler: Callable[[RasterRoiAddRequestedEvent], Any]
+    ) -> RasterViewerWidget:
+        """Register a user request to add an ROI (host chooses identity/geometry)."""
+        return self._on_typed(
+            ROI_ADD_REQUESTED_EVENT, RasterRoiAddRequestedEvent, handler
+        )
+
+    def on_roi_delete_requested(
+        self, handler: Callable[[RasterRoiDeleteRequestedEvent], Any]
+    ) -> RasterViewerWidget:
+        """Register a user request to delete one ROI."""
+        return self._on_typed(
+            ROI_DELETE_REQUESTED_EVENT, RasterRoiDeleteRequestedEvent, handler
+        )
+
+    def on_roi_edit_requested(
+        self, handler: Callable[[RasterRoiEditRequestedEvent], Any]
+    ) -> RasterViewerWidget:
+        """Register a user request to enter ROI edit mode."""
+        return self._on_typed(
+            ROI_EDIT_REQUESTED_EVENT, RasterRoiEditRequestedEvent, handler
+        )
+
+    def on_roi_edit_cancel_requested(
+        self, handler: Callable[[RasterRoiEditCancelRequestedEvent], Any]
+    ) -> RasterViewerWidget:
+        """Register a user request to cancel an active ROI draft."""
+        return self._on_typed(
+            ROI_EDIT_CANCEL_REQUESTED_EVENT,
+            RasterRoiEditCancelRequestedEvent,
+            handler,
+        )
 
     def on_roi_create_requested(
         self, handler: Callable[[RasterRoiCreateRequestedEvent], Any]

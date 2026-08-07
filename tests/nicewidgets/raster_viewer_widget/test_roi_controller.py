@@ -1,4 +1,4 @@
-"""Tests for rectangle-only ImageToolbar demo coordination."""
+"""Tests for delegated JS ROI chrome demo coordination."""
 
 from __future__ import annotations
 
@@ -9,7 +9,11 @@ from typing import Any, cast
 from examples.raster_viewer_widget.roi_controller import DemoRoiController
 from examples.raster_viewer_widget.roi_store import DemoRoiStore
 from nicewidgets.raster_viewer_widget.events import (
+    RasterRoiAddRequestedEvent,
+    RasterRoiDeleteRequestedEvent,
+    RasterRoiEditCancelRequestedEvent,
     RasterRoiEditCommittedEvent,
+    RasterRoiEditRequestedEvent,
     RasterRoiSelectedEvent,
     RasterRoiStateChangeEvent,
 )
@@ -94,12 +98,44 @@ class _Viewer:
     def __init__(self) -> None:
         self.rois = _RoiCommands()
         self.selected_handler: Callable[[RasterRoiSelectedEvent], Any] | None = None
+        self.add_handler: Callable[[RasterRoiAddRequestedEvent], Any] | None = None
+        self.delete_handler: Callable[[RasterRoiDeleteRequestedEvent], Any] | None = None
+        self.edit_handler: Callable[[RasterRoiEditRequestedEvent], Any] | None = None
+        self.cancel_handler: Callable[[RasterRoiEditCancelRequestedEvent], Any] | None = None
         self.state_handler: Callable[[RasterRoiStateChangeEvent], Any] | None = None
-        self.edit_handler: Callable[[RasterRoiEditCommittedEvent], Any] | None = None
+        self.commit_handler: Callable[[RasterRoiEditCommittedEvent], Any] | None = None
 
     def on_roi_selected(self, handler: Callable[[RasterRoiSelectedEvent], Any]) -> object:
         """Store the selection handler."""
         self.selected_handler = handler
+        return self
+
+    def on_roi_add_requested(
+        self, handler: Callable[[RasterRoiAddRequestedEvent], Any]
+    ) -> object:
+        """Store the add-request handler."""
+        self.add_handler = handler
+        return self
+
+    def on_roi_delete_requested(
+        self, handler: Callable[[RasterRoiDeleteRequestedEvent], Any]
+    ) -> object:
+        """Store the delete-request handler."""
+        self.delete_handler = handler
+        return self
+
+    def on_roi_edit_requested(
+        self, handler: Callable[[RasterRoiEditRequestedEvent], Any]
+    ) -> object:
+        """Store the edit-request handler."""
+        self.edit_handler = handler
+        return self
+
+    def on_roi_edit_cancel_requested(
+        self, handler: Callable[[RasterRoiEditCancelRequestedEvent], Any]
+    ) -> object:
+        """Store the edit-cancel handler."""
+        self.cancel_handler = handler
         return self
 
     def on_roi_state_change(
@@ -112,8 +148,8 @@ class _Viewer:
     def on_roi_edit_committed(
         self, handler: Callable[[RasterRoiEditCommittedEvent], Any]
     ) -> object:
-        """Store the edit handler."""
-        self.edit_handler = handler
+        """Store the edit-commit handler."""
+        self.commit_handler = handler
         return self
 
 
@@ -130,22 +166,24 @@ def _controller() -> tuple[DemoRoiController, _DatasetProvider, _Viewer]:
     return controller, datasets, viewer
 
 
-def test_toolbar_lists_channels_but_only_rectangle_rois() -> None:
-    """Keep line ROIs out of the rectangle-specific toolbar contract."""
+def test_controller_tracks_rectangle_selection_not_lines() -> None:
+    """Keep line ROIs out of rectangle Add/Delete/Edit coordination."""
     controller, datasets, _viewer = _controller()
-    assert controller._toolbar.get_channel_options() == ["0", "1"]
-    assert controller._toolbar.get_roi_options() == [datasets.first_rect.roi_id]
+    assert controller.selected_roi_id == datasets.first_rect.roi_id
+    assert datasets.first_rect.roi_id in [
+        roi.roi_id for roi in datasets.store if hasattr(roi, "bounds")
+    ]
 
 
 def test_add_and_delete_are_immediate_rectangle_operations() -> None:
-    """Match ImageToolbarWidget's immediate Add/Delete intent semantics."""
+    """Match instant-add / delete semantics for delegated ROI chrome requests."""
     controller, datasets, viewer = _controller()
 
     async def exercise() -> None:
         await controller._add_rectangle()
-        added_id = controller._toolbar.get_roi_id()
+        added_id = controller.selected_roi_id
         assert added_id is not None
-        assert controller._toolbar.get_roi_options() == [datasets.first_rect.roi_id, added_id]
+        assert added_id != datasets.first_rect.roi_id
         await controller._delete_rectangle(added_id)
 
     asyncio.run(exercise())
@@ -155,4 +193,4 @@ def test_add_and_delete_are_immediate_rectangle_operations() -> None:
         "remove",
         "select",
     ]
-    assert controller._toolbar.get_roi_options() == [datasets.first_rect.roi_id]
+    assert controller.selected_roi_id == datasets.first_rect.roi_id

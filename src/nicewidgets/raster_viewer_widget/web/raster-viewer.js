@@ -2,7 +2,7 @@
 
 import {autoRange, ContrastRangePopover} from './contrast-range.js';
 import {clipboardImageSupported, copyViewportToClipboard} from './clipboard.js';
-import {lucideIcon} from './icons.js';
+import {lucideIcon} from './icons.js?v=roi-chrome-1';
 import {LUT_LABELS, lutTable} from './lut.js';
 import {
   DISPLAY_ORIENTATION,
@@ -173,10 +173,18 @@ export class RasterViewer {
    * Create one self-contained raster viewer inside a host element.
    *
    * @param {HTMLElement} host Empty element owned by this viewer instance.
-   * @param {{theme?:'light'|'dark',invertSliceWheel?:boolean,wheelZoomFactor?:number}} [options]
+   * @param {{
+   *   theme?:'light'|'dark',
+   *   invertSliceWheel?:boolean,
+   *   wheelZoomFactor?:number,
+   *   roiHostMode?:'local'|'delegated',
+   *   roiToolbarVisible?:boolean,
+   * }} [options]
    *   Initial presentation and interaction options. `wheelZoomFactor` defaults
    *   to 1.06; values closer to 1 zoom more slowly (for example, 1.03), and its
-   *   valid range is greater than 1 through 2 inclusive.
+   *   valid range is greater than 1 through 2 inclusive. `roiHostMode` defaults
+   *   to `local` (JS mutates its own ROI list). Use `delegated` when a host owns
+   *   ROI truth and must accept request events before silent `*Roi` APIs run.
    */
   constructor(host, options = {}) {
     this.host = host;
@@ -185,6 +193,8 @@ export class RasterViewer {
     this.theme = normalizeViewerTheme(options.theme || ViewerTheme.DARK);
     this.invertSliceWheel = options.invertSliceWheel !== false;
     this.wheelZoomFactor = options.wheelZoomFactor ?? 1.06;
+    this.roiHostMode = options.roiHostMode === 'delegated' ? 'delegated' : 'local';
+    this.showRoiToolbar = options.roiToolbarVisible !== false;
     this.dataset = null;
     this.channels = [];
     this.mode = 'side';
@@ -197,11 +207,14 @@ export class RasterViewer {
     this.rois = [];
     this.xyPlots = new Map();
     this.selectedRoiId = null;
+    this.nextLocalRoiId = 1;
     this.roiState = RoiInteractionState.IDLE;
     this.roiDraft = null;
     this.activeEditOverlay = null;
     this.modeControls = [];
     this.paneControls = [];
+    this.roiIdleControls = [];
+    this.roiEditControls = [];
     this.planeCache = null;
     this.planeGeneration = 0;
     this.tIndex = null;
@@ -218,7 +231,8 @@ export class RasterViewer {
     };
     this.keyHandler = event => {
       if (event.key === 'Escape' && this.roiState !== RoiInteractionState.IDLE) {
-        this.cancelRoiEdit();
+        if (this.roiHostMode === 'delegated') this.requestRoiEditCancel();
+        else this.cancelRoiEdit();
       } else if (event.key === 'Escape' && this.optionsMenu?.open) {
         this.optionsMenu.open = false;
       }
@@ -433,6 +447,15 @@ export class RasterViewer {
         this.toolbarAction('channel-toolbars', {visible});
       },
     );
+    this.roiToolbarInput = this.visibilityControl(
+      menuPanel,
+      'ROI Toolbar',
+      this.showRoiToolbar,
+      visible => {
+        this.setRoiToolbarVisible(visible);
+        this.toolbarAction('roi-toolbar', {visible});
+      },
+    );
 
     const resetButton = document.createElement('button');
     resetButton.type = 'button';
@@ -447,8 +470,264 @@ export class RasterViewer {
     menuPanel.append(resetButton);
     this.modeControls.push(resetButton);
 
+    this.buildRoiToolbar();
     this.tooltip.refresh();
 
+  }
+
+  /**
+   * Build the top-toolbar ROI strip: dropdown + add/delete/edit/commit/cancel.
+   *
+   * Visibility is independent of per-pane channel toolbars but belongs to the
+   * same conceptual chrome toolbar. In `delegated` mode, action buttons emit
+   * request events only; in `local` mode they mutate the in-viewer ROI list.
+   */
+  buildRoiToolbar() {
+    this.roiIdleControls = [];
+    this.roiEditControls = [];
+    const strip = document.createElement('div');
+    strip.className = 'rv-roi-toolbar';
+    strip.hidden = !this.showRoiToolbar;
+    this.roiToolbar = strip;
+
+    const select = document.createElement('select');
+    select.className = 'rv-roi-select';
+    select.setAttribute('aria-label', 'Selected ROI');
+    select.addEventListener('change', () => {
+      const value = select.value === '' ? null : Number(select.value);
+      this.selectRoi(value, {emit: true, source: 'dropdown'});
+    });
+    strip.append(select);
+    this.roiSelect = select;
+    this.roiIdleControls.push(select);
+
+    const addButton = this.roiIconButton('plus', 'Add ROI', () => this.requestRoiAdd());
+    const deleteButton = this.roiIconButton('trash-2', 'Delete ROI', () => this.requestRoiDelete());
+    const editButton = this.roiIconButton('pencil', 'Edit ROI', () => this.requestRoiEdit());
+    this.roiAddButton = addButton;
+    this.roiDeleteButton = deleteButton;
+    this.roiEditButton = editButton;
+    this.roiIdleControls.push(addButton, deleteButton, editButton);
+    strip.append(addButton, deleteButton, editButton);
+
+    const commitButton = this.roiIconButton('check', 'Commit ROI edit', () => {
+      this.requestRoiEditCommit();
+    });
+    const cancelButton = this.roiIconButton('x', 'Cancel ROI edit', () => {
+      if (this.roiHostMode === 'delegated') this.requestRoiEditCancel();
+      else this.cancelRoiEdit();
+    });
+    this.roiCommitButton = commitButton;
+    this.roiCancelButton = cancelButton;
+    this.roiEditControls.push(commitButton, cancelButton);
+    strip.append(commitButton, cancelButton);
+
+    this.toolbar.append(strip);
+    this.syncRoiToolbar();
+  }
+
+  roiIconButton(icon, label, onClick) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'rv-toolbar-icon-button';
+    button.dataset.rvTooltip = label;
+    button.setAttribute('aria-label', label);
+    button.append(lucideIcon(icon, label));
+    button.addEventListener('click', onClick);
+    return button;
+  }
+
+  /**
+   * Show or hide the top-toolbar ROI CRUD strip.
+   *
+   * @param {boolean} visible Desired visibility.
+   * @returns {boolean} Applied visibility.
+   */
+  setRoiToolbarVisible(visible) {
+    this.showRoiToolbar = Boolean(visible);
+    if (this.roiToolbar) this.roiToolbar.hidden = !this.showRoiToolbar;
+    if (this.roiToolbarInput) this.roiToolbarInput.checked = this.showRoiToolbar;
+    return this.showRoiToolbar;
+  }
+
+  /**
+   * Refresh ROI dropdown options, selection, and idle/edit button enablement.
+   */
+  syncRoiToolbar() {
+    if (!this.roiSelect) return;
+    const previous = this.roiSelect.value;
+    this.roiSelect.replaceChildren();
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = this.rois.length ? 'ROI' : 'No ROIs';
+    this.roiSelect.append(empty);
+    for (const roi of this.rois) {
+      const option = document.createElement('option');
+      option.value = String(roi.roiId);
+      option.textContent = roi.name ? `${roi.roiId}: ${roi.name}` : String(roi.roiId);
+      this.roiSelect.append(option);
+    }
+    const selected = this.selectedRoiId == null ? '' : String(this.selectedRoiId);
+    this.roiSelect.value = this.rois.some(roi => String(roi.roiId) === selected)
+      ? selected
+      : '';
+    if (this.roiSelect.value !== previous && this.roiSelect.value === '' && selected !== '') {
+      this.roiSelect.value = '';
+    }
+    this.updateRoiToolbarEnabled();
+  }
+
+  updateRoiToolbarEnabled() {
+    const editing = this.roiState !== RoiInteractionState.IDLE;
+    const hasSelection = this.selectedRoiId != null;
+    for (const control of this.roiIdleControls) {
+      control.hidden = editing;
+      control.disabled = editing || (control === this.roiDeleteButton || control === this.roiEditButton
+        ? !hasSelection
+        : false);
+    }
+    for (const control of this.roiEditControls) {
+      control.hidden = !editing;
+      control.disabled = !editing;
+    }
+    if (this.roiAddButton) this.roiAddButton.disabled = editing;
+  }
+
+  /**
+   * Request (or locally perform) instant rectangular ROI add.
+   *
+   * @returns {boolean} Whether a request was emitted or a local ROI was added.
+   */
+  requestRoiAdd() {
+    if (!this.dataset || this.roiState !== RoiInteractionState.IDLE) return false;
+    if (this.roiHostMode === 'delegated') {
+      this.dispatch('raster-roi-add-request', {
+        dataset_id: this.dataset.id,
+        preferred_type: RoiType.RECT,
+      });
+      return true;
+    }
+    const envelope = this._localSuggestedRectEnvelope();
+    this.addRoi(envelope);
+    this.selectRoi(envelope.roi_id, {emit: true, source: 'toolbar'});
+    return true;
+  }
+
+  /**
+   * Request (or locally perform) deletion of the selected ROI.
+   *
+   * @returns {boolean} Whether a request was emitted or a local ROI was removed.
+   */
+  requestRoiDelete() {
+    if (!this.dataset || this.roiState !== RoiInteractionState.IDLE || this.selectedRoiId == null) {
+      return false;
+    }
+    const roiId = this.selectedRoiId;
+    if (this.roiHostMode === 'delegated') {
+      this.dispatch('raster-roi-delete-request', {
+        dataset_id: this.dataset.id,
+        roi_id: roiId,
+      });
+      return true;
+    }
+    const ids = this.rois.map(roi => roi.roiId);
+    const index = ids.indexOf(roiId);
+    this.removeRoi(roiId);
+    const remaining = this.rois.map(roi => roi.roiId);
+    const nextId = remaining.length
+      ? remaining[Math.min(Math.max(index, 0), remaining.length - 1)]
+      : null;
+    this.selectRoi(nextId, {emit: true, source: 'toolbar'});
+    return true;
+  }
+
+  /**
+   * Request (or locally begin) editing the selected ROI.
+   *
+   * @returns {boolean} Whether a request was emitted or local edit started.
+   */
+  requestRoiEdit() {
+    if (!this.dataset || this.roiState !== RoiInteractionState.IDLE || this.selectedRoiId == null) {
+      return false;
+    }
+    const roiId = this.selectedRoiId;
+    if (this.roiHostMode === 'delegated') {
+      this.dispatch('raster-roi-edit-request', {
+        dataset_id: this.dataset.id,
+        roi_id: roiId,
+      });
+      return true;
+    }
+    return this.beginRoiEdit(roiId);
+  }
+
+  /**
+   * Commit the active draft: emit a proposal in delegated mode, install locally otherwise.
+   *
+   * @returns {boolean} Whether commit progressed.
+   */
+  requestRoiEditCommit() {
+    if (this.roiState === RoiInteractionState.IDLE || !this.roiDraft) return false;
+    if (this.roiHostMode === 'delegated') return this.commitRoiEdit();
+    if (this.roiState === RoiInteractionState.CREATING) {
+      const envelope = this._localSuggestedRectEnvelope();
+      if (this.roiDraft.roiType === RoiType.RECT) {
+        envelope.data = {
+          row_start: this.roiDraft.bounds.rowStart,
+          row_stop: this.roiDraft.bounds.rowStop,
+          col_start: this.roiDraft.bounds.colStart,
+          col_stop: this.roiDraft.bounds.colStop,
+        };
+        envelope.name = this.roiDraft.name;
+        envelope.note = this.roiDraft.note || '';
+      }
+      return this.completeRoiCommit(envelope);
+    }
+    return this.completeRoiCommit(roiEnvelope(this.roiDraft));
+  }
+
+  /**
+   * Request host cancellation of an active create/edit draft (delegated mode).
+   *
+   * @returns {boolean} Whether a cancel request was emitted.
+   */
+  requestRoiEditCancel() {
+    if (!this.dataset || this.roiState === RoiInteractionState.IDLE) return false;
+    this.dispatch('raster-roi-edit-cancel-request', {
+      dataset_id: this.dataset.id,
+      roi_id: this.roiDraft?.roiId ?? this.selectedRoiId,
+    });
+    return true;
+  }
+
+  _localSuggestedRectEnvelope() {
+    const width = this.dataset.width;
+    const height = this.dataset.height;
+    const rectWidth = Math.max(1, Math.floor(width / 4));
+    const rectHeight = Math.max(1, Math.floor(height / 4));
+    const colStart = Math.floor((width - rectWidth) / 2);
+    const rowStart = Math.floor((height - rectHeight) / 2);
+    const roiId = this.nextLocalRoiId;
+    this.nextLocalRoiId += 1;
+    return {
+      roi_id: roiId,
+      roi_type: RoiType.RECT,
+      version: '1.0',
+      name: String(roiId - 1),
+      note: '',
+      data: {
+        row_start: rowStart,
+        row_stop: rowStart + rectHeight,
+        col_start: colStart,
+        col_stop: colStart + rectWidth,
+      },
+    };
+  }
+
+  _refreshLocalRoiIdCounter() {
+    let maximum = 0;
+    for (const roi of this.rois) maximum = Math.max(maximum, Number(roi.roiId) || 0);
+    this.nextLocalRoiId = maximum + 1;
   }
 
   buildSlidingZControls() {
@@ -983,6 +1262,8 @@ export class RasterViewer {
     if (!this.rois.some(roi => roi.roiId === this.selectedRoiId)) {
       this.selectedRoiId = this.rois[0]?.roiId ?? null;
     }
+    this._refreshLocalRoiIdCounter();
+    this.syncRoiToolbar();
     this.redrawRois();
     return this.rois.length;
   }
@@ -992,6 +1273,8 @@ export class RasterViewer {
     const index = this.rois.findIndex(item => item.roiId === roi.roiId);
     if (index >= 0) this.rois[index] = roi;
     else this.rois.push(roi);
+    this._refreshLocalRoiIdCounter();
+    this.syncRoiToolbar();
     this.redrawRois();
     return true;
   }
@@ -1036,6 +1319,7 @@ export class RasterViewer {
     const previousLength = this.rois.length;
     this.rois = this.rois.filter(roi => roi.roiId !== Number(roiId));
     if (this.selectedRoiId === Number(roiId)) this.selectedRoiId = null;
+    this.syncRoiToolbar();
     this.redrawRois();
     return this.rois.length !== previousLength;
   }
@@ -1054,6 +1338,7 @@ export class RasterViewer {
     const normalized = roiId === null ? null : Number(roiId);
     if (normalized !== null && !this.rois.some(roi => roi.roiId === normalized)) return false;
     this.selectedRoiId = normalized;
+    this.syncRoiToolbar();
     this.redrawRois();
     if (options.emit) {
       this.dispatch('raster-roi-select', {
@@ -1120,6 +1405,7 @@ export class RasterViewer {
     this.activeEditOverlay = this.viewports[0]?.overlay || null;
     this.setRoiControlsDisabled(true);
     this.emitRoiState();
+    this.syncRoiToolbar();
     this.redrawRois();
     return true;
   }
@@ -1186,6 +1472,7 @@ export class RasterViewer {
     this.activeEditOverlay = null;
     this.setRoiControlsDisabled(false);
     this.emitRoiState();
+    this.syncRoiToolbar();
     this.redrawRois();
   }
 
@@ -1195,6 +1482,7 @@ export class RasterViewer {
     if (!disabled && this.slidingZRadiusInput) {
       this.slidingZRadiusInput.disabled = !this.slidingZInput.checked;
     }
+    this.updateRoiToolbarEnabled();
     this.rangePopover.close();
   }
 

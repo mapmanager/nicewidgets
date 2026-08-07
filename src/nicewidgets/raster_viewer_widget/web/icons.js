@@ -27,6 +27,19 @@ const ICONS = Object.freeze({
     ['path', {d: 'M16 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2'}],
   ],
   check: [['path', {d: 'm20 6-11 11-5-5'}]],
+  plus: [['path', {d: 'M5 12h14'}], ['path', {d: 'M12 5v14'}]],
+  x: [['path', {d: 'M18 6 6 18'}], ['path', {d: 'm6 6 12 12'}]],
+  pencil: [
+    ['path', {d: 'M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z'}],
+    ['path', {d: 'm15 5 4 4'}],
+  ],
+  'trash-2': [
+    ['path', {d: 'M3 6h18'}],
+    ['path', {d: 'M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6'}],
+    ['path', {d: 'M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2'}],
+    ['line', {x1: 10, x2: 10, y1: 11, y2: 17}],
+    ['line', {x1: 14, x2: 14, y1: 11, y2: 17}],
+  ],
   'chart-column-decreasing': [
     ['path', {d: 'M13 17V9'}],
     ['path', {d: 'M18 17v-3'}],
@@ -37,7 +50,15 @@ const ICONS = Object.freeze({
 
 export function lucideIcon(name, label) {
   const definition = ICONS[name];
-  if (!definition) throw new Error(`unknown Lucide icon: ${name}`);
+  if (!definition) {
+    console.warn(`unknown Lucide icon: ${name}`);
+    const fallback = document.createElement('span');
+    fallback.className = 'rv-icon-fallback';
+    fallback.textContent = (label || name || '?').slice(0, 2);
+    fallback.setAttribute('aria-hidden', 'true');
+    if (label) fallback.dataset.label = label;
+    return fallback;
+  }
   const svg = document.createElementNS(SVG_NAMESPACE, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('width', '18');
