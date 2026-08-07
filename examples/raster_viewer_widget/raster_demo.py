@@ -393,12 +393,17 @@ class RasterViewerDemo:
             xy_plot_status = ui.label("No plot").classes("opacity-70")
         status = ui.label("Viewer loading…")
         with ui.column().classes("w-full gap-1"):
+            # Standalone: explicit height only. ``flex-1 min-h-0`` belongs in an
+            # embedded shell that already has a definite height; in this
+            # content-sized column it can collapse the splitter pane to 0 unless
+            # something else (e.g. T/Z slice min-height) forces content height.
             splitter_height = "height: 100%; min-height: 520px" if embedded else (
                 "height: 72vh; min-height: 520px"
             )
+            splitter_classes = "w-full flex-1 min-h-0" if embedded else "w-full"
             splitter = (
                 ui.splitter(horizontal=True, value=78, limits=(35, 92))
-                .classes("w-full flex-1 min-h-0")
+                .classes(splitter_classes)
                 .style(splitter_height)
             )
             with splitter.before:
