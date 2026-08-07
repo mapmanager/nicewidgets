@@ -150,3 +150,42 @@ def test_plane_request_rejects_invalid_identity_or_negative_selection(
     """Verify transport requests fail before invoking a source."""
     with pytest.raises(ValueError):
         RasterPlaneRequest(**arguments)  # type: ignore[arg-type]
+
+
+def test_from_channels_coerces_uint8_to_uint16() -> None:
+    """Unsigned integers at or below 16 bits become little-endian uint16."""
+    plane = np.arange(6, dtype=np.uint8).reshape(2, 3)
+    source = NumPyRasterSource.from_channels(
+        {"0": plane},
+        dims=("Y", "X"),
+        physical_units=(1.0, 1.0),
+        physical_units_labels=("px", "px"),
+    )
+    out = source.get_plane(RasterPlaneRequest("0"))
+    assert out.dtype == np.dtype("<u2")
+    np.testing.assert_array_equal(out, plane.astype(np.uint16))
+
+
+def test_from_channels_coerces_signed_integer_to_float32() -> None:
+    """Signed integer acquisition data becomes float32 without clipping."""
+    plane = np.arange(-3, 3, dtype=np.int16).reshape(2, 3)
+    source = NumPyRasterSource.from_channels(
+        {"0": plane},
+        dims=("Y", "X"),
+        physical_units=(1.0, 1.0),
+        physical_units_labels=("px", "px"),
+    )
+    out = source.get_plane(RasterPlaneRequest("0"))
+    assert out.dtype == np.dtype("<f4")
+    np.testing.assert_array_equal(out, plane.astype(np.float32))
+
+
+def test_from_channels_rejects_non_numeric_dtype() -> None:
+    """Non-numeric arrays fail at the transport boundary."""
+    with pytest.raises(TypeError, match="unsupported raster dtype"):
+        NumPyRasterSource.from_channels(
+            {"0": np.array([["a", "b"], ["c", "d"]], dtype=object)},
+            dims=("Y", "X"),
+            physical_units=(1.0, 1.0),
+            physical_units_labels=("px", "px"),
+        )

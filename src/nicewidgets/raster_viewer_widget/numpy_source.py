@@ -33,22 +33,31 @@ def _serialize_rois(rois: Sequence[RoiInput]) -> tuple[dict[str, object], ...]:
 
 
 def _normalize_array(values: npt.NDArray[np.generic]) -> RasterArray:
-    """Return a supported little-endian contiguous array.
+    """Return a supported little-endian contiguous transport array.
+
+    Acquisition-friendly coercion (same policy as former CloudScope view helpers):
+
+    - unsigned integers at or below 16 bits → contiguous little-endian ``uint16``
+    - other numeric kinds (``u``/``i``/``f``) → contiguous little-endian ``float32``
 
     Args:
-        values: Source NumPy array.
+        values: Source NumPy array of any shape.
 
     Returns:
-        Contiguous uint16 or float32 array.
+        Contiguous little-endian ``uint16`` or ``float32`` array.
 
     Raises:
-        TypeError: If the array dtype is unsupported.
+        TypeError: If the array dtype is non-numeric / unsupported.
     """
-    if values.dtype == np.dtype(np.uint16):
-        return np.ascontiguousarray(values, dtype=np.dtype("<u2"))
-    if values.dtype == np.dtype(np.float32):
-        return np.ascontiguousarray(values, dtype=np.dtype("<f4"))
-    raise TypeError("raster arrays must use uint16 or float32")
+    array = np.asarray(values)
+    if array.dtype.kind == "u" and array.dtype.itemsize <= 2:
+        return np.ascontiguousarray(array, dtype=np.dtype("<u2"))
+    if array.dtype.kind in "uif":
+        return np.ascontiguousarray(array, dtype=np.dtype("<f4"))
+    raise TypeError(
+        f"unsupported raster dtype {array.dtype}; "
+        "expected unsigned integers up to 16-bit, or other numeric types"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +97,9 @@ class NumPyRasterSource:
     ) -> NumPyRasterSource:
         """Create a source from separate same-shaped channel arrays.
 
+        Channel arrays may use acquisition-friendly numeric dtypes; they are
+        coerced to little-endian ``uint16`` or ``float32`` transport values.
+
         Args:
             channels: Ordered arrays or channel-ID-to-array mapping.
             dims: Per-channel dimension labels, such as ``("Z", "Y", "X")``.
@@ -105,6 +117,7 @@ class NumPyRasterSource:
         Raises:
             ValueError: If arrays are absent, differ in shape or dtype, or metadata
                 does not describe them.
+            TypeError: If a channel dtype cannot be coerced to a transport type.
         """
         if isinstance(channels, Mapping):
             items = list(channels.items())
@@ -184,7 +197,9 @@ class NumPyRasterSource:
         the full dataset. The browser descriptor excludes that channel axis.
 
         Args:
-            data: uint16 or float32 array containing all dimensions.
+            data: Numeric array containing all dimensions. Unsigned integers at
+                or below 16 bits become ``uint16``; other numeric kinds become
+                ``float32``.
             dims: Axis labels including an optional ``C`` dimension.
             physical_units: Sample spacing corresponding to input ``dims``.
             physical_units_labels: Unit labels corresponding to input ``dims``.
