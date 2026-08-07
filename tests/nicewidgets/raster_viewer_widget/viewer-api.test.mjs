@@ -316,6 +316,93 @@ test('viewer X range uses physical display-X units for every viewport', () => {
   assert.deepEqual(calls, [[5, 10, 0.001], [5, 10, 0.001]]);
 });
 
+test('setLayout remembers multi-channel mode before channels exist', () => {
+  const viewer = Object.create(RasterViewer.prototype);
+  let rendered = 0;
+  Object.assign(viewer, {
+    channels: [],
+    dataset: null,
+    mode: 'side',
+    lastMultiChannelMode: 'side',
+    layoutForNextLoad: null,
+    modeControls: [],
+    channelSelect: null,
+    render: () => { rendered += 1; },
+  });
+  assert.equal(viewer.setLayout('composite'), 'composite');
+  assert.equal(viewer.mode, 'composite');
+  assert.equal(viewer.lastMultiChannelMode, 'composite');
+  assert.equal(viewer.layoutForNextLoad, 'composite');
+  assert.equal(rendered, 0);
+});
+
+test('setLayout single is preserved across the next multi-channel load mode choice', () => {
+  const viewer = Object.create(RasterViewer.prototype);
+  Object.assign(viewer, {
+    channels: [],
+    dataset: null,
+    mode: 'side',
+    lastMultiChannelMode: 'composite',
+    layoutForNextLoad: null,
+    modeControls: [],
+    channelSelect: null,
+    render: () => {},
+  });
+  assert.equal(viewer.setLayout('single'), 'single');
+  assert.equal(viewer.layoutForNextLoad, 'single');
+  assert.equal(viewer.lastMultiChannelMode, 'composite');
+  // Mirror load()'s multi-channel branch.
+  viewer.channels = [{id: '0'}, {id: '1'}];
+  viewer.mode = viewer.layoutForNextLoad != null
+    ? viewer.layoutForNextLoad
+    : viewer.lastMultiChannelMode;
+  viewer.layoutForNextLoad = null;
+  assert.equal(viewer.mode, 'single');
+});
+
+test('setTIndex and setZIndex are no-ops when the axis is absent', async () => {
+  const viewer = Object.create(RasterViewer.prototype);
+  Object.assign(viewer, {
+    dataset: {header: {sizes: {}}},
+    tIndex: null,
+    zIndex: null,
+    plusMinusZ: 0,
+    updatePlanes: async () => {
+      throw new Error('updatePlanes should not run when axis is absent');
+    },
+  });
+  assert.deepEqual(await viewer.setTIndex(3), {
+    t_index: null, z_index: null, plus_minus_z: 0,
+  });
+  assert.deepEqual(await viewer.setZIndex(2), {
+    t_index: null, z_index: null, plus_minus_z: 0,
+  });
+});
+
+test('viewer physical range updates X and Y once per viewport', () => {
+  const calls = [];
+  const viewer = Object.create(RasterViewer.prototype);
+  Object.assign(viewer, {
+    displayAxes: {
+      x: {step: 0.1, label: 'x', unit: ''},
+      y: {step: 0.2, label: 'y', unit: ''},
+    },
+    viewports: [
+      {
+        setPhysicalRange: (...args) => {
+          calls.push(args);
+          return {x: {minimum: 1, maximum: 2}, y: {minimum: 3, maximum: 4}};
+        },
+      },
+    ],
+  });
+  assert.deepEqual(viewer.setPhysicalRange(1, 2, 3, 4), {
+    x: {minimum: 1, maximum: 2},
+    y: {minimum: 3, maximum: 4},
+  });
+  assert.deepEqual(calls, [[1, 2, 0.1, 3, 4, 0.2]]);
+});
+
 test('viewport X range clamps physical values and preserves Y transform', () => {
   const viewport = Object.create(RasterViewport.prototype);
   let emitted = null;
@@ -338,6 +425,31 @@ test('viewport X range clamps physical values and preserves Y transform', () => 
   assert.equal(viewport.scaleY, 7);
   assert.equal(viewport.offsetY, 13);
   assert.deepEqual(emitted, {cause: 'api-x-range', final: true});
+});
+
+test('viewport physical range updates X and Y with one draw', () => {
+  const viewport = Object.create(RasterViewport.prototype);
+  let draws = 0;
+  let emitted = null;
+  Object.assign(viewport, {
+    bitmap: {width: 100, height: 50},
+    scaleX: 1,
+    scaleY: 1,
+    offsetX: 0,
+    offsetY: 0,
+    plot: () => ({left: 20, top: 10, width: 400, height: 200}),
+    draw: () => { draws += 1; },
+    emit: (cause, final) => { emitted = {cause, final}; },
+  });
+  assert.deepEqual(viewport.setPhysicalRange(0, 20, 0.2, 2, 8, 0.2), {
+    x: {minimum: 0, maximum: 20},
+    y: {minimum: 2, maximum: 8},
+  });
+  assert.equal(draws, 1);
+  assert.deepEqual(emitted, {cause: 'api-physical-range', final: true});
+  assert.equal(viewport.scaleX, 4);
+  assert.equal(viewport.offsetX, 20);
+  assert.equal(viewport.scaleY, 200 / 30);
 });
 
 test('visible range and axes are bounded to the displayed image footprint', () => {

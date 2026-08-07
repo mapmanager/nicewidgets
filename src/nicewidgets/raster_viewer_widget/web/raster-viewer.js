@@ -200,6 +200,8 @@ export class RasterViewer {
     this.channels = [];
     this.mode = 'side';
     this.lastMultiChannelMode = 'side';
+    /** @type {'side'|'stack'|'single'|'composite'|null} Host layout for the next load. */
+    this.layoutForNextLoad = null;
     this.selected = '';
     this.showAxes = true;
     this.showRois = this.roiChromeEnabled;
@@ -284,12 +286,17 @@ export class RasterViewer {
     if (!supported.has(layout)) throw new Error(`unsupported viewer layout: ${layout}`);
     if (this.channels.length === 1) layout = 'single';
     this.mode = layout;
-    if (this.channels.length > 1) this.lastMultiChannelMode = layout;
+    // Remember host intent for the next load, including ``single`` (which must
+    // not be lost when load would otherwise fall back to lastMultiChannelMode).
+    this.layoutForNextLoad = layout;
+    // Always remember multi-channel layouts even before channels exist so the
+    // next loadSource first-paints with the host-requested mode (no flash).
+    if (layout !== 'single') this.lastMultiChannelMode = layout;
     for (const input of this.modeControls) {
       if (input.type === 'radio') input.checked = input.value === layout;
     }
     if (this.channelSelect) this.channelSelect.hidden = layout !== 'single';
-    this.render();
+    if (this.dataset && this.channels.length > 0) this.render();
     return this.mode;
   }
 
@@ -348,7 +355,14 @@ export class RasterViewer {
       histogram: null,
     }));
     await this.updatePlanes({initializeContrast: true, render: false});
-    this.mode = this.channels.length === 1 ? 'single' : this.lastMultiChannelMode;
+    if (this.channels.length === 1) {
+      this.mode = 'single';
+    } else if (this.layoutForNextLoad != null) {
+      this.mode = this.layoutForNextLoad;
+    } else {
+      this.mode = this.lastMultiChannelMode;
+    }
+    this.layoutForNextLoad = null;
     this.setRois(descriptor.rois || []);
     this.selected = this.channels[0].id;
     this.buildToolbar();
@@ -823,13 +837,16 @@ export class RasterViewer {
   /**
    * Select a zero-based Z plane through the normal cache/fetch pipeline.
    *
+   * When the active dataset has no Z dimension this is a no-op and returns the
+   * current plane selection (hosts may call it unconditionally on reconnect).
+   *
    * @param {number} zIndex Requested plane index; finite values are truncated and clamped.
-   * @returns {Promise<{t_index:number|null,z_index:number,plus_minus_z:number}>} Applied selection.
-   * @throws {Error} If the active dataset has no Z dimension.
+   * @returns {Promise<{t_index:number|null,z_index:number|null,plus_minus_z:number}>} Applied selection.
    */
   async setZIndex(zIndex) {
-    const zSize = this.dataset.header?.sizes?.Z;
-    if (!Number.isInteger(zSize)) throw new Error('active dataset has no Z dimension');
+    const zSize = this.dataset?.header?.sizes?.Z;
+    // No-op when Z is absent so hosts can restore session plane indices safely.
+    if (!Number.isInteger(zSize)) return this.planeSelection();
     const normalized = Math.max(0, Math.min(zSize - 1, Math.trunc(Number(zIndex))));
     this.zIndex = normalized;
     if (this.zSlider) this.zSlider.value = String(normalized);
@@ -841,14 +858,17 @@ export class RasterViewer {
   /**
    * Select a zero-based T plane through the normal cache/fetch pipeline.
    *
+   * When the active dataset has no T dimension this is a no-op and returns the
+   * current plane selection (hosts may call it unconditionally on reconnect).
+   *
    * @param {number} tIndex Requested index; finite values are truncated and clamped.
-   * @returns {Promise<{t_index:number,z_index:number|null,plus_minus_z:number}>}
+   * @returns {Promise<{t_index:number|null,z_index:number|null,plus_minus_z:number}>}
    *   Complete applied plane selection.
-   * @throws {Error} If the active dataset has no T dimension.
    */
   async setTIndex(tIndex) {
-    const tSize = this.dataset.header?.sizes?.T;
-    if (!Number.isInteger(tSize)) throw new Error('active dataset has no T dimension');
+    const tSize = this.dataset?.header?.sizes?.T;
+    // No-op when T is absent so hosts can restore session plane indices safely.
+    if (!Number.isInteger(tSize)) return this.planeSelection();
     const normalized = Math.max(0, Math.min(tSize - 1, Math.trunc(Number(tIndex))));
     this.tIndex = normalized;
     if (this.tSlider) this.tSlider.value = String(normalized);
@@ -1073,6 +1093,67 @@ export class RasterViewer {
       );
     }
     return applied;
+  }
+
+  /**
+   * Apply one physical Y range to every visible pane while preserving X transforms.
+   *
+   * @param {number} minimum Requested physical lower edge.
+   * @param {number} maximum Requested physical upper edge.
+   * @returns {{minimum:number,maximum:number}|null} Last pane's bounded applied range.
+   */
+  setYRange(minimum, maximum) {
+    let applied = null;
+    for (const viewport of this.viewports) {
+      applied = viewport.setPhysicalYRange(
+        Number(minimum),
+        Number(maximum),
+        this.displayAxes.y.step,
+      );
+    }
+    return applied;
+  }
+
+  /**
+   * Apply physical X and Y ranges to every pane in one transform update.
+   *
+   * @param {number} xMinimum Requested physical X lower edge.
+   * @param {number} xMaximum Requested physical X upper edge.
+   * @param {number} yMinimum Requested physical Y lower edge.
+   * @param {number} yMaximum Requested physical Y upper edge.
+   * @returns {{x:{minimum:number,maximum:number},y:{minimum:number,maximum:number}}|null}
+   *     Last pane's bounded applied ranges.
+   */
+  setPhysicalRange(xMinimum, xMaximum, yMinimum, yMaximum) {
+    let applied = null;
+    for (const viewport of this.viewports) {
+      applied = viewport.setPhysicalRange(
+        Number(xMinimum),
+        Number(xMaximum),
+        this.displayAxes.x.step,
+        Number(yMinimum),
+        Number(yMaximum),
+        this.displayAxes.y.step,
+      );
+    }
+    return applied;
+  }
+
+  /**
+   * Return the full physical Y extent of the loaded image.
+   *
+   * @returns {{minimum:number,maximum:number,label:string,unit:string}|null}
+   */
+  fullPhysicalYRange() {
+    if (!this.dataset) return null;
+    const step = this.displayAxes.y.step;
+    if (!Number.isFinite(step) || step <= 0) throw new Error('Y axis step must be positive');
+    return {
+      minimum: 0,
+      maximum: this.displayHeight * step,
+      label: this.displayAxes.y.label,
+      unit: this.displayAxes.y.unit,
+    };
   }
 
   /**

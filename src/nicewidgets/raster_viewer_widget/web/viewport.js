@@ -260,6 +260,67 @@ export class RasterViewport {
     return {minimum: clampedMinimum, maximum: clampedMaximum};
   }
 
+  setPhysicalYRange(minimum, maximum, step) {
+    if (!this.bitmap) throw new Error('Raster image is unavailable');
+    if (!Number.isFinite(minimum) || !Number.isFinite(maximum) || minimum >= maximum) {
+      throw new Error('Y axis range requires finite minimum < maximum');
+    }
+    if (!Number.isFinite(step) || step <= 0) throw new Error('Y axis step must be positive');
+    const fullMaximum = this.bitmap.height * step;
+    const clampedMinimum = clamp(minimum, 0, fullMaximum);
+    const clampedMaximum = clamp(maximum, 0, fullMaximum);
+    if (clampedMinimum >= clampedMaximum) {
+      throw new Error('Y axis range is outside the displayed dataset extent');
+    }
+    const y0 = clampedMinimum / step;
+    const y1 = clampedMaximum / step;
+    const plot = this.plot();
+    this.scaleY = plot.height / (y1 - y0);
+    this.offsetY = plot.top - (this.bitmap.height - y1) * this.scaleY;
+    this.draw();
+    this.emit('api-y-range', true);
+    return {minimum: clampedMinimum, maximum: clampedMaximum};
+  }
+
+  setPhysicalRange(xMinimum, xMaximum, xStep, yMinimum, yMaximum, yStep) {
+    if (!this.bitmap) throw new Error('Raster image is unavailable');
+    if (!Number.isFinite(xMinimum) || !Number.isFinite(xMaximum) || xMinimum >= xMaximum) {
+      throw new Error('X axis range requires finite minimum < maximum');
+    }
+    if (!Number.isFinite(yMinimum) || !Number.isFinite(yMaximum) || yMinimum >= yMaximum) {
+      throw new Error('Y axis range requires finite minimum < maximum');
+    }
+    if (!Number.isFinite(xStep) || xStep <= 0) throw new Error('X axis step must be positive');
+    if (!Number.isFinite(yStep) || yStep <= 0) throw new Error('Y axis step must be positive');
+    const fullX = this.bitmap.width * xStep;
+    const fullY = this.bitmap.height * yStep;
+    const x0Phys = clamp(xMinimum, 0, fullX);
+    const x1Phys = clamp(xMaximum, 0, fullX);
+    const y0Phys = clamp(yMinimum, 0, fullY);
+    const y1Phys = clamp(yMaximum, 0, fullY);
+    if (x0Phys >= x1Phys) {
+      throw new Error('X axis range is outside the displayed dataset extent');
+    }
+    if (y0Phys >= y1Phys) {
+      throw new Error('Y axis range is outside the displayed dataset extent');
+    }
+    const x0 = x0Phys / xStep;
+    const x1 = x1Phys / xStep;
+    const y0 = y0Phys / yStep;
+    const y1 = y1Phys / yStep;
+    const plot = this.plot();
+    this.scaleX = plot.width / (x1 - x0);
+    this.offsetX = plot.left - x0 * this.scaleX;
+    this.scaleY = plot.height / (y1 - y0);
+    this.offsetY = plot.top - (this.bitmap.height - y1) * this.scaleY;
+    this.draw();
+    this.emit('api-physical-range', true);
+    return {
+      x: {minimum: x0Phys, maximum: x1Phys},
+      y: {minimum: y0Phys, maximum: y1Phys},
+    };
+  }
+
   setOverlay(overlay) {
     this.overlay = overlay;
     this.overlay.draw();

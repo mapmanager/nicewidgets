@@ -53,6 +53,8 @@ def test_component_declares_recent_lifecycle_and_presentation_bridges() -> None:
         "setTIndex",
         "setZIndex",
         "setPhysicalCalibration",
+        "setYRange",
+        "setPhysicalRange",
         "selectChannel",
         "setChannelDisplay",
         "setChannelToolbarsVisible",

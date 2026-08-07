@@ -416,8 +416,54 @@ class RasterViewerWidget(ui.element, component="web/raster_viewer_component.js")
         result = await self._run("setXRange", minimum, maximum)
         return result if isinstance(result, dict) else {}
 
+    async def set_y_range(self, minimum: float, maximum: float) -> dict[str, float]:
+        """Set the physical display-Y range without changing the X transform.
+
+        Args:
+            minimum: Requested lower bound in the header's display-Y units.
+            maximum: Requested upper bound in the header's display-Y units.
+
+        Returns:
+            Applied, image-clamped minimum and maximum.
+        """
+        result = await self._run("setYRange", minimum, maximum)
+        return result if isinstance(result, dict) else {}
+
+    async def set_physical_range(
+        self,
+        x_minimum: float,
+        x_maximum: float,
+        y_minimum: float,
+        y_maximum: float,
+    ) -> dict[str, object]:
+        """Set physical display X and Y ranges in one viewport update.
+
+        Prefer this over sequential :meth:`set_x_range` / :meth:`set_y_range`
+        when restoring a reconnect viewport so the browser paints once.
+
+        Args:
+            x_minimum: Requested lower bound in display-X units.
+            x_maximum: Requested upper bound in display-X units.
+            y_minimum: Requested lower bound in display-Y units.
+            y_maximum: Requested upper bound in display-Y units.
+
+        Returns:
+            Applied clamped ``{"x": {...}, "y": {...}}`` mapping when available.
+        """
+        result = await self._run(
+            "setPhysicalRange",
+            x_minimum,
+            x_maximum,
+            y_minimum,
+            y_maximum,
+        )
+        return result if isinstance(result, dict) else {}
+
     async def set_z_index(self, z_index: int) -> dict[str, int | None]:
         """Select a zero-based Z plane.
+
+        When the active dataset has no Z axis this is a no-op and returns the
+        current plane selection.
 
         Args:
             z_index: Requested index, clamped to the active Z extent.
@@ -430,6 +476,9 @@ class RasterViewerWidget(ui.element, component="web/raster_viewer_component.js")
 
     async def set_t_index(self, t_index: int) -> dict[str, int | None]:
         """Select a zero-based T plane.
+
+        When the active dataset has no T axis this is a no-op and returns the
+        current plane selection.
 
         Args:
             t_index: Requested index, clamped to the active T extent.

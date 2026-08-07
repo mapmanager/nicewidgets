@@ -94,6 +94,17 @@ export default {
     },
     async setTheme(value) { return (await this.getViewer()).setTheme(value); },
     async setLayout(value) { return (await this.getViewer()).setLayout(value); },
+    async setXRange(minimum, maximum) {
+      return (await this.getViewer()).setXRange(minimum, maximum);
+    },
+    async setYRange(minimum, maximum) {
+      return (await this.getViewer()).setYRange(minimum, maximum);
+    },
+    async setPhysicalRange(xMinimum, xMaximum, yMinimum, yMaximum) {
+      return (await this.getViewer()).setPhysicalRange(
+        xMinimum, xMaximum, yMinimum, yMaximum,
+      );
+    },
     async setAxesVisible(value) { return (await this.getViewer()).setAxesVisible(value); },
     async setRoisVisible(value) { return (await this.getViewer()).setRoisVisible(value); },
     async setChannelToolbarsVisible(value) {
@@ -101,9 +112,6 @@ export default {
     },
     async setRoiToolbarVisible(value) {
       return (await this.getViewer()).setRoiToolbarVisible(value);
-    },
-    async setXRange(minimum, maximum) {
-      return (await this.getViewer()).setXRange(minimum, maximum);
     },
     async setZIndex(value) { return (await this.getViewer()).setZIndex(value); },
     async setTIndex(value) { return (await this.getViewer()).setTIndex(value); },
