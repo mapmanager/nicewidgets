@@ -35,6 +35,15 @@ def test_mixed_roi_envelopes_round_trip_strictly() -> None:
     assert rois[1].to_json()["roi_type"] == "linesegmentroi"
 
 
+def test_empty_roi_name_is_allowed_identity_is_roi_id() -> None:
+    """Optional display names may be blank; roi_id remains required and positive."""
+    roi = RectRoi(4, "", RectRoiBounds(1, 5, 2, 7))
+    assert roi.name == ""
+    assert roi_from_mapping(roi.to_json()) == roi
+    with pytest.raises(ValueError, match="roi_id must be positive"):
+        RectRoi(0, "", RectRoiBounds(1, 5, 2, 7))
+
+
 def test_store_uses_one_monotonic_identity_namespace_for_mixed_shapes() -> None:
     """Deleting either shape does not reuse IDs or numeric display names."""
     store = DemoRoiStore(ImageBounds(100, 80))

@@ -44,11 +44,15 @@ class RasterViewerConfig:
         theme: Initial light or dark viewer chrome theme.
         layout: Initial channel layout; ``auto`` preserves viewer defaults.
         axes_visible: Whether image axes are initially visible.
-        rois_visible: Whether ROI overlays are initially visible.
+        rois_visible: Whether ROI overlays are initially visible. Ignored when
+            ``roi_chrome_enabled`` is false (overlays stay off).
         channel_toolbars_visible: Whether each pane initially shows its header
             toolbar containing channel controls and Copy view.
         roi_toolbar_visible: Whether the top-toolbar ROI strip (dropdown + CRUD)
-            is initially visible.
+            is initially visible. Ignored when ``roi_chrome_enabled`` is false.
+        roi_chrome_enabled: When false, ROI overlays and ROI CRUD chrome are
+            unavailable (no strip, no ROIs / ROI Toolbar options toggles). Use
+            for display-only hosts such as a reference-image viewer.
         roi_host_mode: Local mock mutation vs host-delegated request callbacks.
         invert_slice_wheel: Whether Alt/Option+wheel up moves toward plane zero
             and wheel down moves toward the maximum. It targets Z when present,
@@ -66,6 +70,7 @@ class RasterViewerConfig:
     rois_visible: bool = True
     channel_toolbars_visible: bool = True
     roi_toolbar_visible: bool = True
+    roi_chrome_enabled: bool = True
     roi_host_mode: RoiHostMode = RoiHostMode.LOCAL
     invert_slice_wheel: bool = True
     wheel_zoom_factor: float = 1.06

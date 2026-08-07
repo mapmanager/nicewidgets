@@ -29,6 +29,7 @@ export default {
     initialRoisVisible: {type: Boolean, default: true},
     initialChannelToolbarsVisible: {type: Boolean, default: true},
     initialRoiToolbarVisible: {type: Boolean, default: true},
+    roiChromeEnabled: {type: Boolean, default: true},
     roiHostMode: {type: String, default: 'local'},
     invertSliceWheel: {type: Boolean, default: true},
     wheelZoomFactor: {type: Number, default: 1.06},
@@ -51,19 +52,20 @@ export default {
     async initializeViewer() {
       const stylesheetUrl = `${this.resourcePath}/raster-viewer.css`;
       await ensureStylesheet(stylesheetUrl);
-      const module = await import(`${this.resourcePath}/raster-viewer.js?v=roi-chrome-1`);
+      const module = await import(`${this.resourcePath}/raster-viewer.js?v=roi-name-1`);
       this.viewer = new module.RasterViewer(this.$refs.host, {
         theme: this.initialTheme,
         invertSliceWheel: this.invertSliceWheel,
         wheelZoomFactor: this.wheelZoomFactor,
         roiHostMode: this.roiHostMode,
         roiToolbarVisible: this.initialRoiToolbarVisible,
+        roiChromeEnabled: this.roiChromeEnabled,
       });
       if (this.descriptorUrl) await this.fetchAndLoad(this.descriptorUrl, this.viewer);
       this.viewer.setAxesVisible(this.initialAxesVisible);
-      this.viewer.setRoisVisible(this.initialRoisVisible);
+      this.viewer.setRoisVisible(this.roiChromeEnabled && this.initialRoisVisible);
       this.viewer.setChannelToolbarsVisible(this.initialChannelToolbarsVisible);
-      this.viewer.setRoiToolbarVisible(this.initialRoiToolbarVisible);
+      this.viewer.setRoiToolbarVisible(this.roiChromeEnabled && this.initialRoiToolbarVisible);
       if (this.initialLayout !== 'auto') this.viewer.setLayout(this.initialLayout);
       return true;
     },

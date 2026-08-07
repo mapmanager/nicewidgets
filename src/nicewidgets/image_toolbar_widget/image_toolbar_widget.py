@@ -74,6 +74,7 @@ class ImageToolbarWidget:
         *,
         on_intent: Callable[[ImageToolbarIntent], None] | None = None,
         widget_name: str = 'image_toolbar_widget',
+        include_roi_controls: bool = True,
     ) -> None:
         """Create the toolbar and build child controls.
 
@@ -81,9 +82,13 @@ class ImageToolbarWidget:
             on_intent: Called for user-driven intents. If ``None``, ROI action buttons
                 are disabled (selects still emit selection intents when enabled).
             widget_name: Host-visible identifier for logging or debugging.
+            include_roi_controls: When false, omit ROI select and CRUD buttons
+                (channel controls remain). Prefer this when ROI chrome lives in
+                the raster JS viewer instead.
         """
         self._widget_name = widget_name
         self._on_intent = on_intent
+        self._include_roi_controls = include_roi_controls
         self._suppress_intent = False
         self._enabled = True
         self._mode = ImageToolbarMode.IDLE
@@ -104,30 +109,39 @@ class ImageToolbarWidget:
                 on_change=self._on_channel_change,
             ).props(f'name=channel {COMPACT_SELECT_PROPS}').classes(f'w-24 {COMPACT_SELECT_CLASS}')
 
-        with ui.row().classes('items-center gap-1'):
-            ui.label('ROI')
-            self._roi_select = ui.select(
-                options=[],
-                value=None,
-                on_change=self._on_roi_change,
-            ).props(f'name=roi {COMPACT_SELECT_PROPS}').classes(f'w-24 {COMPACT_SELECT_CLASS}')
+        if include_roi_controls:
+            with ui.row().classes('items-center gap-1'):
+                ui.label('ROI')
+                self._roi_select = ui.select(
+                    options=[],
+                    value=None,
+                    on_change=self._on_roi_change,
+                ).props(f'name=roi {COMPACT_SELECT_PROPS}').classes(f'w-24 {COMPACT_SELECT_CLASS}')
 
-        self._add_btn = ui.button(icon='add', on_click=self._on_add_click).props('flat round')
-        self._add_btn.tooltip('Add ROI')
-        self._delete_btn = ui.button(icon='remove', on_click=self._on_delete_click).props('flat round')
-        self._delete_btn.tooltip('Delete ROI')
-        self._edit_btn = ui.button(icon='edit', on_click=self._on_edit_click).props('flat round')
-        self._edit_btn.tooltip('Edit ROI')
-        self._full_width_btn = ui.button(icon='code', on_click=self._on_full_width_click).props('flat round')
-        self._full_width_btn.tooltip('Full width')
-        self._full_height_btn = ui.button(icon='height', on_click=self._on_full_height_click).props('flat round')
-        self._full_height_btn.tooltip('Full height')
-        self._ok_btn = ui.button('OK', on_click=self._on_ok_click).props('flat')
-        self._ok_btn.tooltip('Submit ROI edit')
-        self._cancel_btn = ui.button('Cancel', on_click=self._on_cancel_click).props('flat')
-        self._cancel_btn.tooltip('Cancel ROI edit')
-
-        self._apply_roi_mode_to_ui()
+            self._add_btn = ui.button(icon='add', on_click=self._on_add_click).props('flat round')
+            self._add_btn.tooltip('Add ROI')
+            self._delete_btn = ui.button(icon='remove', on_click=self._on_delete_click).props('flat round')
+            self._delete_btn.tooltip('Delete ROI')
+            self._edit_btn = ui.button(icon='edit', on_click=self._on_edit_click).props('flat round')
+            self._edit_btn.tooltip('Edit ROI')
+            self._full_width_btn = ui.button(icon='code', on_click=self._on_full_width_click).props('flat round')
+            self._full_width_btn.tooltip('Full width')
+            self._full_height_btn = ui.button(icon='height', on_click=self._on_full_height_click).props('flat round')
+            self._full_height_btn.tooltip('Full height')
+            self._ok_btn = ui.button('OK', on_click=self._on_ok_click).props('flat')
+            self._ok_btn.tooltip('Submit ROI edit')
+            self._cancel_btn = ui.button('Cancel', on_click=self._on_cancel_click).props('flat')
+            self._cancel_btn.tooltip('Cancel ROI edit')
+            self._apply_roi_mode_to_ui()
+        else:
+            self._roi_select = None
+            self._add_btn = None
+            self._delete_btn = None
+            self._edit_btn = None
+            self._full_width_btn = None
+            self._full_height_btn = None
+            self._ok_btn = None
+            self._cancel_btn = None
 
     @contextmanager
     def _intent_suppressed(self) -> object:
@@ -182,11 +196,13 @@ class ImageToolbarWidget:
     def _apply_roi_mode_to_ui(self) -> None:
         """Show/hide and enable ROI action buttons from mode, options, and flags."""
         editing = self._mode == ImageToolbarMode.EDITING
+        base = self._enabled
+        self._channel_select.set_enabled(base and not editing)
+        if not self._include_roi_controls:
+            return
         has_roi = bool(self._roi_options) and self._roi_id is not None
         hosted = self._on_intent is not None
-        base = self._enabled
 
-        self._channel_select.set_enabled(base and not editing)
         self._roi_select.set_enabled(base and not editing and bool(self._roi_options))
 
         for b in (self._add_btn, self._delete_btn, self._edit_btn):
@@ -249,8 +265,9 @@ class ImageToolbarWidget:
             self._roi_id = roi_id
             self._channel_select.set_options(self._channel_options)
             self._channel_select.value = self._channel_as_str(channel)
-            self._roi_select.set_options(self._roi_options)
-            self._roi_select.value = roi_id
+            if self._roi_select is not None:
+                self._roi_select.set_options(self._roi_options)
+                self._roi_select.value = roi_id
         self._apply_roi_mode_to_ui()
 
     def set_channel_options_ext(self, options: Sequence[str]) -> None:
@@ -287,8 +304,9 @@ class ImageToolbarWidget:
         validate_options_update_preserves_int_selection(field='roi', current_value=cur, new_options=options)
         with self._intent_suppressed():
             self._roi_options = list(options)
-            self._roi_select.set_options(self._roi_options)
-            self._roi_select.value = cur
+            if self._roi_select is not None:
+                self._roi_select.set_options(self._roi_options)
+                self._roi_select.value = cur
         self._apply_roi_mode_to_ui()
 
     def set_roi_options_and_selection_ext(self, roi_options: Sequence[int], roi_id: int | None) -> None:
@@ -309,8 +327,9 @@ class ImageToolbarWidget:
         with self._intent_suppressed():
             self._roi_options = list(roi_options)
             self._roi_id = roi_id
-            self._roi_select.set_options(self._roi_options)
-            self._roi_select.value = roi_id
+            if self._roi_select is not None:
+                self._roi_select.set_options(self._roi_options)
+                self._roi_select.value = roi_id
         self._apply_roi_mode_to_ui()
 
     def set_channel_ext(self, channel: int | None) -> None:
@@ -342,7 +361,8 @@ class ImageToolbarWidget:
         validate_scalar_int_in_options(roi_id, self._roi_options, field='roi_id')
         with self._intent_suppressed():
             self._roi_id = roi_id
-            self._roi_select.value = roi_id
+            if self._roi_select is not None:
+                self._roi_select.value = roi_id
         self._apply_roi_mode_to_ui()
 
     def get_file_id(self) -> str | None:

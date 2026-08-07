@@ -119,9 +119,14 @@ class RasterViewerWidget(ui.element, component="web/raster_viewer_component.js")
                 "initial-theme": self._config.theme.value,
                 "initial-layout": self._config.layout.value,
                 "initial-axes-visible": self._config.axes_visible,
-                "initial-rois-visible": self._config.rois_visible,
+                "initial-rois-visible": (
+                    self._config.roi_chrome_enabled and self._config.rois_visible
+                ),
                 "initial-channel-toolbars-visible": self._config.channel_toolbars_visible,
-                "initial-roi-toolbar-visible": self._config.roi_toolbar_visible,
+                "initial-roi-toolbar-visible": (
+                    self._config.roi_chrome_enabled and self._config.roi_toolbar_visible
+                ),
+                "roi-chrome-enabled": self._config.roi_chrome_enabled,
                 "roi-host-mode": self._config.roi_host_mode.value,
                 "invert-slice-wheel": self._config.invert_slice_wheel,
                 "wheel-zoom-factor": self._config.wheel_zoom_factor,

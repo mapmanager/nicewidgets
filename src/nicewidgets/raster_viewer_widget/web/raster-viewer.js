@@ -17,7 +17,7 @@ import {
   RoiInteractionState,
   RoiOverlay,
   RoiType,
-} from './roi-overlay.js';
+} from './roi-overlay.js?v=roi-name-1';
 import {RasterViewport} from './viewport.js';
 import {PlaneCache} from './plane-cache.js';
 import {normalizeViewerTheme, readChromeTheme, ViewerTheme} from './theme.js';
@@ -194,14 +194,15 @@ export class RasterViewer {
     this.invertSliceWheel = options.invertSliceWheel !== false;
     this.wheelZoomFactor = options.wheelZoomFactor ?? 1.06;
     this.roiHostMode = options.roiHostMode === 'delegated' ? 'delegated' : 'local';
-    this.showRoiToolbar = options.roiToolbarVisible !== false;
+    this.roiChromeEnabled = options.roiChromeEnabled !== false;
+    this.showRoiToolbar = this.roiChromeEnabled && options.roiToolbarVisible !== false;
     this.dataset = null;
     this.channels = [];
     this.mode = 'side';
     this.lastMultiChannelMode = 'side';
     this.selected = '';
     this.showAxes = true;
-    this.showRois = true;
+    this.showRois = this.roiChromeEnabled;
     this.showChannelToolbars = true;
     this.viewports = [];
     this.rois = [];
@@ -434,10 +435,12 @@ export class RasterViewer {
       this.setAxesVisible(visible);
       this.toolbarAction('axes', {visible});
     });
-    this.roisInput = this.visibilityControl(menuPanel, 'ROIs', this.showRois, visible => {
-      this.setRoisVisible(visible);
-      this.toolbarAction('rois', {visible});
-    });
+    if (this.roiChromeEnabled) {
+      this.roisInput = this.visibilityControl(menuPanel, 'ROIs', this.showRois, visible => {
+        this.setRoisVisible(visible);
+        this.toolbarAction('rois', {visible});
+      });
+    }
     this.channelToolbarsInput = this.visibilityControl(
       menuPanel,
       'Channel Toolbars',
@@ -447,15 +450,17 @@ export class RasterViewer {
         this.toolbarAction('channel-toolbars', {visible});
       },
     );
-    this.roiToolbarInput = this.visibilityControl(
-      menuPanel,
-      'ROI Toolbar',
-      this.showRoiToolbar,
-      visible => {
-        this.setRoiToolbarVisible(visible);
-        this.toolbarAction('roi-toolbar', {visible});
-      },
-    );
+    if (this.roiChromeEnabled) {
+      this.roiToolbarInput = this.visibilityControl(
+        menuPanel,
+        'ROI Toolbar',
+        this.showRoiToolbar,
+        visible => {
+          this.setRoiToolbarVisible(visible);
+          this.toolbarAction('roi-toolbar', {visible});
+        },
+      );
+    }
 
     const resetButton = document.createElement('button');
     resetButton.type = 'button';
@@ -470,7 +475,7 @@ export class RasterViewer {
     menuPanel.append(resetButton);
     this.modeControls.push(resetButton);
 
-    this.buildRoiToolbar();
+    if (this.roiChromeEnabled) this.buildRoiToolbar();
     this.tooltip.refresh();
 
   }
@@ -544,6 +549,11 @@ export class RasterViewer {
    * @returns {boolean} Applied visibility.
    */
   setRoiToolbarVisible(visible) {
+    if (!this.roiChromeEnabled) {
+      this.showRoiToolbar = false;
+      if (this.roiToolbar) this.roiToolbar.hidden = true;
+      return false;
+    }
     this.showRoiToolbar = Boolean(visible);
     if (this.roiToolbar) this.roiToolbar.hidden = !this.showRoiToolbar;
     if (this.roiToolbarInput) this.roiToolbarInput.checked = this.showRoiToolbar;
@@ -1002,6 +1012,12 @@ export class RasterViewer {
    * @returns {boolean} Applied value; active edit drafts cannot be hidden.
    */
   setRoisVisible(visible) {
+    if (!this.roiChromeEnabled) {
+      this.showRois = false;
+      if (this.roisInput) this.roisInput.checked = false;
+      this.redrawRois();
+      return false;
+    }
     if (!visible && this.roiState !== RoiInteractionState.IDLE) return this.showRois;
     this.showRois = Boolean(visible);
     if (this.roisInput) this.roisInput.checked = this.showRois;

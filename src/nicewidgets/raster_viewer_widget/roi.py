@@ -105,7 +105,11 @@ class LineEndpoints:
 
 @dataclass(frozen=True, slots=True)
 class RectRoi:
-    """Committed rectangular ROI."""
+    """Committed rectangular ROI.
+
+    ``name`` is an optional human label and may be empty. Stable identity is
+    ``roi_id``.
+    """
 
     roi_id: int
     name: str
@@ -113,7 +117,7 @@ class RectRoi:
     note: str = ""
 
     def __post_init__(self) -> None:
-        """Validate stable identity and display name."""
+        """Validate stable identity and optional display name."""
         _validate_identity(self.roi_id, self.name)
 
     @property
@@ -128,7 +132,11 @@ class RectRoi:
 
 @dataclass(frozen=True, slots=True)
 class LineRoi:
-    """Committed two-endpoint line-segment ROI."""
+    """Committed two-endpoint line-segment ROI.
+
+    ``name`` is an optional human label and may be empty. Stable identity is
+    ``roi_id``.
+    """
 
     roi_id: int
     name: str
@@ -136,7 +144,7 @@ class LineRoi:
     note: str = ""
 
     def __post_init__(self) -> None:
-        """Validate stable identity and display name."""
+        """Validate stable identity and optional display name."""
         _validate_identity(self.roi_id, self.name)
 
     @property
@@ -165,11 +173,16 @@ def _envelope(roi: Roi, data: dict[str, int]) -> dict[str, object]:
 
 
 def _validate_identity(roi_id: int, name: str) -> None:
-    """Validate fields shared by every committed ROI value."""
+    """Validate fields shared by every committed ROI value.
+
+    ``name`` may be empty: ``roi_id`` is the stable identity. Callers may use
+    ``name`` later as an optional human label; browsers fall back to
+    ``roi_id`` when ``name`` is blank.
+    """
     if roi_id <= 0:
         raise ValueError("roi_id must be positive")
-    if not name:
-        raise ValueError("ROI name must not be empty")
+    if not isinstance(name, str):
+        raise ValueError("ROI name must be a string")
 
 
 def roi_from_mapping(value: object) -> Roi:

@@ -11,6 +11,8 @@ def test_wheel_zoom_factor_defaults_to_slower_zoom() -> None:
     assert config.wheel_zoom_factor == 1.06
     assert config.channel_toolbars_visible is True
     assert config.roi_toolbar_visible is True
+    assert config.roi_chrome_enabled is True
+    assert RasterViewerConfig(roi_chrome_enabled=False).roi_chrome_enabled is False
     assert config.roi_host_mode.value == "local"
 
 

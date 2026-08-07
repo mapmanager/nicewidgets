@@ -326,7 +326,8 @@ export class RoiOverlay {
         : {x: geometry.start.x + 5, y: geometry.start.y - 5};
       this.context.fillStyle = '#fde047';
       this.context.font = '11px system-ui, sans-serif';
-      this.context.fillText(roi.name, anchor.x, anchor.y);
+      const label = roi.name ? String(roi.name) : String(roi.roiId);
+      this.context.fillText(label, anchor.x, anchor.y);
     }
     if (editing && this.viewer.activeEditOverlay === this) {
       const handles = geometry.kind === 'rect'
