@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
 from io import BytesIO
@@ -17,6 +19,8 @@ from nicewidgets.utils.desktop import is_pywebview_desktop
 from nicewidgets.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+_PNG_DATA_URL_PREFIX = 'data:image/png;base64,'
 
 
 def copy_to_clipboard(text: str) -> None:
@@ -43,6 +47,27 @@ def copy_to_clipboard(text: str) -> None:
     text_literal = json.dumps(text)
     ui.run_javascript(f"navigator.clipboard.writeText({text_literal});")
     logger.debug("copied text via browser clipboard")
+
+
+def png_bytes_from_data_url(data_url: str) -> bytes:
+    """Decode a ``data:image/png;base64,...`` URL into PNG bytes.
+
+    Args:
+        data_url: Browser-composed PNG data URL.
+
+    Returns:
+        Raw PNG bytes.
+
+    Raises:
+        ValueError: If the URL is not a PNG data URL or base64 is invalid.
+    """
+    if not isinstance(data_url, str) or not data_url.startswith(_PNG_DATA_URL_PREFIX):
+        raise ValueError('Expected a data:image/png;base64 data URL')
+    b64 = data_url.split(',', 1)[1]
+    try:
+        return base64.b64decode(b64, validate=True)
+    except binascii.Error as exc:
+        raise ValueError(f'Invalid base64 PNG data: {exc}') from exc
 
 
 def copy_png_bytes_to_native_clipboard(png_bytes: bytes) -> None:

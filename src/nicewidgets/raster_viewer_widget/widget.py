@@ -9,10 +9,17 @@ from typing import Any, TypeVar
 import numpy.typing as npt
 from nicegui import events, ui
 
+from nicewidgets.utils.clipboard import (
+    copy_png_bytes_to_native_clipboard,
+    png_bytes_from_data_url,
+)
+from nicewidgets.utils.logging import get_logger
+
 from .channel_api import ChannelApi
 from .config import RasterViewerConfig, ViewerLayout, ViewerTheme
 from .events import (
     CHANNEL_SELECTED_EVENT,
+    COPY_VIEW_REQUESTED_EVENT,
     DISPLAY_CHANGE_EVENT,
     ERROR_EVENT,
     PERFORMANCE_EVENT,
@@ -29,6 +36,7 @@ from .events import (
     TOOLBAR_ACTION_EVENT,
     VIEW_CHANGE_EVENT,
     RasterChannelSelectedEvent,
+    RasterCopyViewRequestedEvent,
     RasterDisplayChangeEvent,
     RasterErrorEvent,
     RasterEvent,
@@ -47,6 +55,8 @@ from .events import (
     RasterToolbarActionEvent,
     RasterViewChangeEvent,
 )
+
+logger = get_logger(__name__)
 from .models import RasterChannelDisplay
 from .numpy_source import NumPyRasterSource
 from .roi import Roi
@@ -130,9 +140,14 @@ class RasterViewerWidget(ui.element, component="web/raster_viewer_component.js")
                 "roi-host-mode": self._config.roi_host_mode.value,
                 "invert-slice-wheel": self._config.invert_slice_wheel,
                 "wheel-zoom-factor": self._config.wheel_zoom_factor,
+                # Always advertise the bridge: JS prefers the browser Clipboard
+                # API when available, and only emits raster-copy-view-request
+                # when that API is missing (typical NiceGUI native / pywebview).
+                "host-clipboard-bridge": True,
             }
         )
         self.classes("w-full h-full min-h-0")
+        self.on_viewer_event(COPY_VIEW_REQUESTED_EVENT, self._on_copy_view_requested)
         if on_channel_selected is not None:
             self.on_channel_selected(on_channel_selected)
         if on_display_changed is not None:
@@ -712,6 +727,26 @@ class RasterViewerWidget(ui.element, component="web/raster_viewer_component.js")
         """Release source state when NiceGUI removes this element indirectly."""
         self._release_source()
         super()._handle_delete()
+
+    def _on_copy_view_requested(self, event: events.GenericEventArguments) -> None:
+        """Write a JS-composed viewport PNG to the native OS clipboard.
+
+        Used when the browser Clipboard API cannot write images (NiceGUI
+        native / pywebview). Web sessions copy entirely in JavaScript.
+
+        Args:
+            event: NiceGUI custom-event wrapper from ``raster-copy-view-request``.
+
+        Returns:
+            None.
+        """
+        try:
+            request = RasterCopyViewRequestedEvent.from_nicegui(event)
+            png_bytes = png_bytes_from_data_url(request.png_data_url)
+            copy_png_bytes_to_native_clipboard(png_bytes)
+        except Exception as exc:
+            logger.exception('Native raster copy-view clipboard write failed')
+            ui.notify(f'Copy failed: {exc}', type='negative')
 
     def _release_source(self) -> None:
         """Idempotently unregister the current Python source."""

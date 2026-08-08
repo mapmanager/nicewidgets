@@ -1,7 +1,12 @@
 /** Self-contained multi-channel raster viewer with generated toolbar. */
 
 import {autoRange, ContrastRangePopover} from './contrast-range.js';
-import {clipboardImageSupported, copyViewportToClipboard} from './clipboard.js';
+import {
+  clipboardCopyAvailable,
+  clipboardImageSupported,
+  composeViewportPngDataUrl,
+  copyViewportToClipboard,
+} from './clipboard.js';
 import {lucideIcon} from './icons.js?v=roi-chrome-1';
 import {LUT_LABELS, lutTable} from './lut.js';
 import {
@@ -25,7 +30,20 @@ import {ViewerTooltip} from './tooltip.js';
 import {normalizeXYPlot, XYPlotOverlay} from './xy-plot-overlay.js';
 
 let viewerInstanceCounter = 0;
+/** @type {RasterViewer|null} Last pointer-activated viewer for digit layout hotkeys. */
+let keyboardActiveViewer = null;
 export const RASTER_DESCRIPTOR_SCHEMA_VERSION = '2.0';
+
+/**
+ * True when a key event target is an editable control that should keep the keystroke.
+ *
+ * @param {EventTarget|null} target Event target.
+ * @returns {boolean} Whether layout hotkeys should ignore this event.
+ */
+function isEditableKeyboardTarget(target) {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]'));
+}
 
 /**
  * @typedef {object} RasterAxis
@@ -179,12 +197,15 @@ export class RasterViewer {
    *   wheelZoomFactor?:number,
    *   roiHostMode?:'local'|'delegated',
    *   roiToolbarVisible?:boolean,
+   *   hostClipboardBridge?:boolean,
    * }} [options]
    *   Initial presentation and interaction options. `wheelZoomFactor` defaults
    *   to 1.06; values closer to 1 zoom more slowly (for example, 1.03), and its
    *   valid range is greater than 1 through 2 inclusive. `roiHostMode` defaults
    *   to `local` (JS mutates its own ROI list). Use `delegated` when a host owns
    *   ROI truth and must accept request events before silent `*Roi` APIs run.
+   *   `hostClipboardBridge` enables Copy view when the browser Clipboard API is
+   *   unavailable (NiceGUI native / pywebview) by emitting PNG bytes to Python.
    */
   constructor(host, options = {}) {
     this.host = host;
@@ -195,6 +216,9 @@ export class RasterViewer {
     this.wheelZoomFactor = options.wheelZoomFactor ?? 1.06;
     this.roiHostMode = options.roiHostMode === 'delegated' ? 'delegated' : 'local';
     this.roiChromeEnabled = options.roiChromeEnabled !== false;
+    // NiceGUI/Vue may deliver booleans as real bools or as "true"/"false" strings.
+    this.hostClipboardBridge = options.hostClipboardBridge === true
+      || options.hostClipboardBridge === 'true';
     this.showRoiToolbar = this.roiChromeEnabled && options.roiToolbarVisible !== false;
     this.dataset = null;
     this.channels = [];
@@ -232,18 +256,81 @@ export class RasterViewer {
         this.optionsMenu.open = false;
       }
     };
-    this.keyHandler = event => {
-      if (event.key === 'Escape' && this.roiState !== RoiInteractionState.IDLE) {
-        if (this.roiHostMode === 'delegated') this.requestRoiEditCancel();
-        else this.cancelRoiEdit();
-      } else if (event.key === 'Escape' && this.optionsMenu?.open) {
-        this.optionsMenu.open = false;
-      }
+    this.hostPointerHandler = () => {
+      keyboardActiveViewer = this;
     };
+    this.keyHandler = event => this.onDocumentKeyDown(event);
     document.addEventListener('keydown', this.keyHandler);
     document.addEventListener('pointerdown', this.pointerHandler);
     this.buildShell();
+    this.host.addEventListener('pointerdown', this.hostPointerHandler);
     this.tooltip = new ViewerTooltip(this.host, this.instanceId);
+  }
+
+  /**
+   * Document key handler: Escape for chrome, layout/reset hotkeys when activated.
+   *
+   * @param {KeyboardEvent} event Browser keydown event.
+   * @returns {void}
+   */
+  onDocumentKeyDown(event) {
+    if (event.key === 'Escape' && this.roiState !== RoiInteractionState.IDLE) {
+      if (this.roiHostMode === 'delegated') this.requestRoiEditCancel();
+      else this.cancelRoiEdit();
+      return;
+    }
+    if (event.key === 'Escape' && this.optionsMenu?.open) {
+      this.optionsMenu.open = false;
+      return;
+    }
+    if (keyboardActiveViewer !== this) return;
+    if (isEditableKeyboardTarget(event.target)) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (this.handleChannelLayoutHotkey(event.key) || this.handleResetViewHotkey(event.key)) {
+      event.preventDefault();
+    }
+  }
+
+  /**
+   * Apply multi-channel layout hotkeys: ``1``/``2`` → one-channel 0/1, ``3`` → composite.
+   *
+   * Inactive when the dataset has fewer than two channels. Requires this viewer
+   * to be the pointer-activated keyboard target (see host ``pointerdown``).
+   *
+   * @param {string} key ``event.key`` value.
+   * @returns {boolean} True when the key was handled.
+   */
+  handleChannelLayoutHotkey(key) {
+    if (!this.dataset || this.channels.length < 2) return false;
+    if (key === '1' || key === '2') {
+      const channel = this.channels[key === '1' ? 0 : 1];
+      if (!channel) return false;
+      this.setLayout('single');
+      this.selectChannel(channel.id);
+      this.toolbarAction('view-mode', {mode: 'single'});
+      return true;
+    }
+    if (key === '3') {
+      this.setLayout('composite');
+      this.toolbarAction('view-mode', {mode: 'composite'});
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Enter/Return triggers the same action as Viewer options → Reset view.
+   *
+   * @param {string} key ``event.key`` value.
+   * @returns {boolean} True when the key was handled.
+   */
+  handleResetViewHotkey(key) {
+    if (key !== 'Enter') return false;
+    if (!this.dataset) return false;
+    this.resetView();
+    this.toolbarAction('reset-view', {});
+    if (this.optionsMenu) this.optionsMenu.open = false;
+    return true;
   }
 
   buildShell() {
@@ -296,6 +383,7 @@ export class RasterViewer {
       if (input.type === 'radio') input.checked = input.value === layout;
     }
     if (this.channelSelect) this.channelSelect.hidden = layout !== 'single';
+    this.syncRoiToolbarDivider();
     if (this.dataset && this.channels.length > 0) this.render();
     return this.mode;
   }
@@ -376,63 +464,16 @@ export class RasterViewer {
   buildToolbar() {
     this.toolbar.replaceChildren();
     this.modeControls = [];
+    this.layoutControls = null;
+    this.slidingZControls = null;
+    this.roiToolbarDivider = null;
+    this.roiToolbar = null;
     this.tSlider = null;
     this.tOutput = null;
     this.zSlider = null;
     this.zOutput = null;
-    const modes = [
-      ['side', 'Side by side', 'columns-2'],
-      ['stack', 'Stacked', 'rows-2'],
-      ['single', 'One channel', 'square'],
-      ['composite', 'Composite', 'layers-3'],
-    ];
-    const layoutGroup = document.createElement('div');
-    layoutGroup.className = 'rv-layout-controls';
-    layoutGroup.setAttribute('role', 'radiogroup');
-    layoutGroup.setAttribute('aria-label', 'Channel layout');
-    layoutGroup.hidden = this.channels.length === 1;
-    for (const [value, text, icon] of modes) {
-      const label = document.createElement('label');
-      label.className = 'rv-icon-radio';
-      label.dataset.rvTooltip = text;
-      const input = document.createElement('input');
-      input.type = 'radio';
-      input.name = `rv-mode-${this.instanceId}`;
-      input.value = value;
-      input.checked = this.mode === value;
-      input.setAttribute('aria-label', text);
-      this.modeControls.push(input);
-      input.addEventListener('change', () => {
-        this.mode = value;
-        this.lastMultiChannelMode = value;
-        this.channelSelect.hidden = value !== 'single';
-        this.render();
-        this.toolbarAction('view-mode', {mode: value});
-      });
-      label.append(input, lucideIcon(icon, text));
-      layoutGroup.append(label);
-    }
-    this.toolbar.append(layoutGroup);
 
-    const channelSelect = document.createElement('select');
-    channelSelect.setAttribute('aria-label', 'Selected channel');
-    for (const channel of this.channels) {
-      const option = document.createElement('option');
-      option.value = channel.id;
-      option.textContent = String(channel.index);
-      channelSelect.append(option);
-    }
-    channelSelect.value = this.selected;
-    channelSelect.addEventListener('change', () => {
-      this.selectChannel(channelSelect.value);
-    });
-    channelSelect.hidden = this.channels.length === 1 || this.mode !== 'single';
-    this.toolbar.append(channelSelect);
-    this.channelSelect = channelSelect;
-    this.modeControls.push(channelSelect);
-
-    this.buildSlidingZControls();
-
+    // Viewer options stay leftmost; ROI strip keeps margin-left:auto on the right.
     const menu = document.createElement('details');
     menu.className = 'rv-options-menu';
     const menuButton = document.createElement('summary');
@@ -489,6 +530,61 @@ export class RasterViewer {
     menuPanel.append(resetButton);
     this.modeControls.push(resetButton);
 
+    const modes = [
+      ['side', 'Side by side', 'columns-2'],
+      ['stack', 'Stacked', 'rows-2'],
+      ['single', 'One channel', 'square'],
+      ['composite', 'Composite', 'layers-3'],
+    ];
+    const layoutGroup = document.createElement('div');
+    layoutGroup.className = 'rv-layout-controls';
+    layoutGroup.setAttribute('role', 'radiogroup');
+    layoutGroup.setAttribute('aria-label', 'Channel layout');
+    layoutGroup.hidden = this.channels.length === 1;
+    this.layoutControls = layoutGroup;
+    for (const [value, text, icon] of modes) {
+      const label = document.createElement('label');
+      label.className = 'rv-icon-radio';
+      label.dataset.rvTooltip = text;
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = `rv-mode-${this.instanceId}`;
+      input.value = value;
+      input.checked = this.mode === value;
+      input.setAttribute('aria-label', text);
+      this.modeControls.push(input);
+      input.addEventListener('change', () => {
+        this.mode = value;
+        this.lastMultiChannelMode = value;
+        this.channelSelect.hidden = value !== 'single';
+        this.syncRoiToolbarDivider();
+        this.render();
+        this.toolbarAction('view-mode', {mode: value});
+      });
+      label.append(input, lucideIcon(icon, text));
+      layoutGroup.append(label);
+    }
+    this.toolbar.append(layoutGroup);
+
+    const channelSelect = document.createElement('select');
+    channelSelect.setAttribute('aria-label', 'Selected channel');
+    for (const channel of this.channels) {
+      const option = document.createElement('option');
+      option.value = channel.id;
+      option.textContent = String(channel.index);
+      channelSelect.append(option);
+    }
+    channelSelect.value = this.selected;
+    channelSelect.addEventListener('change', () => {
+      this.selectChannel(channelSelect.value);
+    });
+    channelSelect.hidden = this.channels.length === 1 || this.mode !== 'single';
+    this.toolbar.append(channelSelect);
+    this.channelSelect = channelSelect;
+    this.modeControls.push(channelSelect);
+
+    this.buildSlidingZControls();
+
     if (this.roiChromeEnabled) this.buildRoiToolbar();
     this.tooltip.refresh();
 
@@ -504,6 +600,11 @@ export class RasterViewer {
   buildRoiToolbar() {
     this.roiIdleControls = [];
     this.roiEditControls = [];
+    const divider = document.createElement('div');
+    divider.className = 'rv-toolbar-divider';
+    divider.setAttribute('aria-hidden', 'true');
+    this.roiToolbarDivider = divider;
+
     const strip = document.createElement('div');
     strip.className = 'rv-roi-toolbar';
     strip.hidden = !this.showRoiToolbar;
@@ -532,17 +633,39 @@ export class RasterViewer {
     const commitButton = this.roiIconButton('check', 'Commit ROI edit', () => {
       this.requestRoiEditCommit();
     });
+    commitButton.classList.add('rv-toolbar-icon-button--commit');
     const cancelButton = this.roiIconButton('x', 'Cancel ROI edit', () => {
       if (this.roiHostMode === 'delegated') this.requestRoiEditCancel();
       else this.cancelRoiEdit();
     });
+    cancelButton.classList.add('rv-toolbar-icon-button--cancel');
     this.roiCommitButton = commitButton;
     this.roiCancelButton = cancelButton;
     this.roiEditControls.push(commitButton, cancelButton);
     strip.append(commitButton, cancelButton);
 
-    this.toolbar.append(strip);
+    this.toolbar.append(divider, strip);
     this.syncRoiToolbar();
+    this.syncRoiToolbarDivider();
+  }
+
+  /**
+   * Show a thin divider before the ROI strip when it sits beside other chrome.
+   *
+   * Hidden when the ROI toolbar is off, or when layout / channel select /
+   * Sliding-Z are all hidden (typical one-channel toolbar).
+   *
+   * @returns {void}
+   */
+  syncRoiToolbarDivider() {
+    if (!this.roiToolbarDivider) return;
+    const roiVisible = Boolean(this.showRoiToolbar && this.roiToolbar && !this.roiToolbar.hidden);
+    const neighborVisible = Boolean(
+      (this.layoutControls && !this.layoutControls.hidden)
+      || (this.channelSelect && !this.channelSelect.hidden)
+      || (this.slidingZControls && !this.slidingZControls.hidden),
+    );
+    this.roiToolbarDivider.hidden = !(roiVisible && neighborVisible);
   }
 
   roiIconButton(icon, label, onClick) {
@@ -566,11 +689,13 @@ export class RasterViewer {
     if (!this.roiChromeEnabled) {
       this.showRoiToolbar = false;
       if (this.roiToolbar) this.roiToolbar.hidden = true;
+      this.syncRoiToolbarDivider();
       return false;
     }
     this.showRoiToolbar = Boolean(visible);
     if (this.roiToolbar) this.roiToolbar.hidden = !this.showRoiToolbar;
     if (this.roiToolbarInput) this.roiToolbarInput.checked = this.showRoiToolbar;
+    this.syncRoiToolbarDivider();
     return this.showRoiToolbar;
   }
 
@@ -759,6 +884,7 @@ export class RasterViewer {
     if (!Number.isInteger(zSize) || zSize < 1) return;
     const controls = document.createElement('div');
     controls.className = 'rv-sliding-z-controls';
+    this.slidingZControls = controls;
     const slidingLabel = document.createElement('label');
     slidingLabel.className = 'rv-sliding-z';
     const enabled = document.createElement('input');
@@ -1723,7 +1849,7 @@ export class RasterViewer {
     copyButton.dataset.rvTooltip = 'Copy view to clipboard';
     copyButton.setAttribute('aria-label', 'Copy view to clipboard');
     copyButton.append(lucideIcon('copy', 'Copy view to clipboard'));
-    copyButton.disabled = !clipboardImageSupported();
+    copyButton.disabled = !clipboardCopyAvailable(this.hostClipboardBridge);
     if (copyButton.disabled) {
       copyButton.dataset.rvTooltip = 'Image clipboard access is unavailable in this browser context';
     }
@@ -1746,17 +1872,7 @@ export class RasterViewer {
         if (sliceControl) body.append(sliceControl);
       }
     }
-    if (this.channels.length === 1 && this.optionsMenu) {
-      const overlayControls = document.createElement('div');
-      overlayControls.className = 'rv-pane-overlay-controls';
-      const slidingZControls = this.toolbar.querySelector('.rv-sliding-z-controls');
-      if (slidingZControls) overlayControls.append(slidingZControls);
-      overlayControls.append(this.optionsMenu);
-      wrap.append(overlayControls);
-      this.toolbar.hidden = true;
-    } else {
-      this.toolbar.hidden = false;
-    }
+    this.toolbar.hidden = false;
     pane.append(header, body);
     this.stage.append(pane);
     const viewport = new RasterViewport(canvas, detail => this.dispatch(
@@ -1787,19 +1903,29 @@ export class RasterViewer {
     copyButton.addEventListener('click', async () => {
       copyButton.disabled = true;
       try {
-        await copyViewportToClipboard(viewport);
+        const channelIds = group.map(channel => channel.id);
+        if (clipboardImageSupported()) {
+          await copyViewportToClipboard(viewport);
+        } else if (this.hostClipboardBridge) {
+          const pngDataUrl = await composeViewportPngDataUrl(viewport);
+          this.dispatch('raster-copy-view-request', {
+            dataset_id: this.dataset.id,
+            png_data_url: pngDataUrl,
+            channels: channelIds,
+          });
+        } else {
+          throw new Error('Image clipboard access is unavailable in this browser context');
+        }
         copyButton.replaceChildren(lucideIcon('check', 'Copied'));
         copyButton.dataset.rvTooltip = 'Copied';
-        this.toolbarAction('copy-view', {
-          channels: group.map(channel => channel.id),
-        });
+        this.toolbarAction('copy-view', {channels: channelIds});
         setTimeout(() => {
           copyButton.replaceChildren(lucideIcon('copy', 'Copy view to clipboard'));
           copyButton.dataset.rvTooltip = 'Copy view to clipboard';
-          copyButton.disabled = false;
+          copyButton.disabled = !clipboardCopyAvailable(this.hostClipboardBridge);
         }, 1000);
       } catch (error) {
-        copyButton.disabled = false;
+        copyButton.disabled = !clipboardCopyAvailable(this.hostClipboardBridge);
         this.dispatch('raster-error', {
           message: error instanceof Error ? error.message : String(error),
         });
@@ -1873,6 +1999,8 @@ export class RasterViewer {
     this.tooltip.destroy();
     document.removeEventListener('keydown', this.keyHandler);
     document.removeEventListener('pointerdown', this.pointerHandler);
+    this.host.removeEventListener('pointerdown', this.hostPointerHandler);
+    if (keyboardActiveViewer === this) keyboardActiveViewer = null;
     this.host.replaceChildren();
     this.host.classList.remove('rv-root');
   }

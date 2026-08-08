@@ -1,4 +1,4 @@
-/** Log-histogram display-range popover shared by all viewer channels. */
+/** Display-range popover with optional log-scaled histogram bars. */
 
 import {sampleLut} from './lut.js';
 
@@ -67,6 +67,21 @@ export function histogramBarColor(lut) {
   return `rgb(${red} ${green} ${blue})`;
 }
 
+/**
+ * Normalize a bin count to a bar height fraction.
+ *
+ * @param {number} count Bin count (non-negative).
+ * @param {number} maxCount Maximum bin count in the histogram.
+ * @param {boolean} [logScale=true] When true, use log1p scaling; otherwise linear.
+ * @returns {number} Fraction in ``[0, 1]``.
+ */
+export function histogramBarFraction(count, maxCount, logScale = true) {
+  const peak = Math.max(1, Number(maxCount) || 0);
+  const value = Math.max(0, Number(count) || 0);
+  if (logScale) return Math.log1p(value) / Math.log1p(peak);
+  return value / peak;
+}
+
 function numberText(value) {
   const magnitude = Math.abs(value);
   if ((magnitude !== 0 && magnitude < 0.001) || magnitude >= 100000) {
@@ -83,6 +98,7 @@ export class ContrastRangePopover {
     this.activeButton = null;
     this.histogram = null;
     this.dragHandle = null;
+    this.logScale = true;
     this.theme = {
       canvasBackground: '#020617',
       histogramBar: '#64748b',
@@ -114,13 +130,29 @@ export class ContrastRangePopover {
     this.autoButton = document.createElement('button');
     this.autoButton.type = 'button';
     this.autoButton.textContent = 'Auto';
+    this.logLabel = document.createElement('label');
+    this.logLabel.className = 'rv-range-log';
+    this.logCheckbox = document.createElement('input');
+    this.logCheckbox.type = 'checkbox';
+    this.logCheckbox.checked = this.logScale;
+    this.logCheckbox.setAttribute('aria-label', 'Log histogram Y scale');
+    this.logLabel.append(this.logCheckbox, document.createTextNode('Log'));
     fields.append(
       this.fieldLabel('Min', this.minimumInput),
       this.fieldLabel('Max', this.maximumInput),
       this.autoButton,
+      this.logLabel,
     );
     this.element.append(histogramWrap, fields);
-    this.root.append(this.element);
+    this.mountPopover();
+  }
+
+  mountPopover() {
+    // Prefer document.body so fixed positioning is not trapped in a viewer stacking context.
+    const mount = typeof document !== 'undefined' && document.body
+      ? document.body
+      : this.root;
+    if (mount && this.element.parentElement !== mount) mount.append(this.element);
   }
 
   numberInput(label) {
@@ -147,6 +179,10 @@ export class ContrastRangePopover {
       this.onRangeChange();
       this.drawHistogram();
     });
+    this.logCheckbox.addEventListener('change', () => {
+      this.logScale = Boolean(this.logCheckbox.checked);
+      this.drawHistogram();
+    });
     this.canvas.addEventListener('pointerdown', event => this.beginDrag(event));
     this.canvas.addEventListener('pointermove', event => this.updateDrag(event));
     this.canvas.addEventListener('pointerup', event => this.endDrag(event));
@@ -164,6 +200,11 @@ export class ContrastRangePopover {
     window.addEventListener('resize', this.resizeHandler);
   }
 
+  syncThemeFromRoot() {
+    const theme = this.root?.dataset?.theme === 'light' ? 'light' : 'dark';
+    this.element.dataset.theme = theme;
+  }
+
   toggle(channel, button) {
     if (!this.element.hidden && this.channel?.id === channel.id) {
       this.close();
@@ -173,7 +214,10 @@ export class ContrastRangePopover {
     this.activeButton = button;
     this.histogram = channel.histogram || histogramForValues(channel.data);
     channel.histogram = this.histogram;
+    this.syncThemeFromRoot();
+    this.mountPopover();
     this.syncFields();
+    this.logCheckbox.checked = this.logScale;
     this.element.hidden = false;
     this.position();
     this.drawHistogram();
@@ -187,6 +231,7 @@ export class ContrastRangePopover {
 
   setTheme(theme) {
     this.theme = theme;
+    this.syncThemeFromRoot();
     this.drawHistogram();
   }
 
@@ -295,7 +340,7 @@ export class ContrastRangePopover {
         + index / this.histogram.bins.length * (HISTOGRAM_RIGHT - HISTOGRAM_LEFT);
       const x1 = HISTOGRAM_LEFT
         + (index + 1) / this.histogram.bins.length * (HISTOGRAM_RIGHT - HISTOGRAM_LEFT);
-      const fraction = Math.log1p(count) / Math.log1p(maxCount);
+      const fraction = histogramBarFraction(count, maxCount, this.logScale);
       const height = fraction * (bottom - top);
       context.fillRect(x0, bottom - height, Math.max(1, x1 - x0), height);
     });

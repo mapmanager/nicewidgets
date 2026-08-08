@@ -28,6 +28,7 @@ VIEW_CHANGE_EVENT = "raster-view-change"
 DISPLAY_CHANGE_EVENT = "raster-display-change"
 CHANNEL_SELECTED_EVENT = "raster-channel-selected"
 TOOLBAR_ACTION_EVENT = "raster-toolbar-action"
+COPY_VIEW_REQUESTED_EVENT = "raster-copy-view-request"
 PLANE_CHANGE_EVENT = "raster-plane-change"
 PERFORMANCE_EVENT = "raster-performance"
 ROI_SELECTED_EVENT = "raster-roi-select"
@@ -184,6 +185,21 @@ class RasterToolbarActionEvent(RasterEvent):
     def channel_id(self) -> str | None:
         """Return the selected channel ID when the action carries one."""
         value = self.payload.get("channel_id")
+        return str(value) if value is not None else None
+
+
+class RasterCopyViewRequestedEvent(RasterEvent):
+    """Request a native host clipboard write for a composed viewport PNG."""
+
+    @property
+    def png_data_url(self) -> str:
+        """Return the composed ``data:image/png;base64,...`` URL."""
+        return str(self.payload["png_data_url"])
+
+    @property
+    def dataset_id(self) -> str | None:
+        """Return the active dataset identity when present."""
+        value = self.payload.get("dataset_id")
         return str(value) if value is not None else None
 
 

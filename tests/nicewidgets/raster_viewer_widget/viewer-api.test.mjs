@@ -360,6 +360,112 @@ test('setLayout single is preserved across the next multi-channel load mode choi
   assert.equal(viewer.mode, 'single');
 });
 
+test('hostClipboardBridge coercion accepts NiceGUI string true', () => {
+  // Mirrors RasterViewer constructor coercion (bool or "true" string).
+  const coerce = (value) => value === true || value === 'true';
+  assert.equal(coerce(true), true);
+  assert.equal(coerce('true'), true);
+  assert.equal(coerce(false), false);
+  assert.equal(coerce('false'), false);
+  assert.equal(coerce(undefined), false);
+});
+
+test('ROI toolbar divider shows only beside neighboring chrome', () => {
+  const viewer = Object.create(RasterViewer.prototype);
+  const divider = {hidden: true};
+  Object.assign(viewer, {
+    showRoiToolbar: true,
+    roiToolbar: {hidden: false},
+    roiToolbarDivider: divider,
+    layoutControls: {hidden: false},
+    channelSelect: {hidden: true},
+    slidingZControls: null,
+  });
+  viewer.syncRoiToolbarDivider();
+  assert.equal(divider.hidden, false);
+
+  viewer.layoutControls.hidden = true;
+  viewer.syncRoiToolbarDivider();
+  assert.equal(divider.hidden, true);
+
+  viewer.slidingZControls = {hidden: false};
+  viewer.syncRoiToolbarDivider();
+  assert.equal(divider.hidden, false);
+
+  viewer.showRoiToolbar = false;
+  viewer.syncRoiToolbarDivider();
+  assert.equal(divider.hidden, true);
+});
+
+test('Enter hotkey resets the view like Viewer options Reset view', () => {
+  const actions = [];
+  let resetCalls = 0;
+  const viewer = Object.create(RasterViewer.prototype);
+  Object.assign(viewer, {
+    dataset: {id: 'ds'},
+    optionsMenu: {open: true},
+    resetView() {
+      resetCalls += 1;
+      return true;
+    },
+    toolbarAction(action, detail) {
+      actions.push([action, detail]);
+    },
+  });
+  assert.equal(viewer.handleResetViewHotkey('Enter'), true);
+  assert.equal(resetCalls, 1);
+  assert.deepEqual(actions, [['reset-view', {}]]);
+  assert.equal(viewer.optionsMenu.open, false);
+  assert.equal(viewer.handleResetViewHotkey('1'), false);
+
+  viewer.dataset = null;
+  assert.equal(viewer.handleResetViewHotkey('Enter'), false);
+});
+
+test('channel layout hotkeys map 1/2/3 for multi-channel viewers', () => {
+  const actions = [];
+  const selected = [];
+  const viewer = Object.create(RasterViewer.prototype);
+  Object.assign(viewer, {
+    dataset: {id: 'ds'},
+    channels: [{id: 'c0'}, {id: 'c1'}],
+    mode: 'side',
+    lastMultiChannelMode: 'side',
+    layoutForNextLoad: null,
+    modeControls: [],
+    channelSelect: null,
+    setLayout(layout) {
+      this.mode = layout;
+      if (layout !== 'single') this.lastMultiChannelMode = layout;
+      this.layoutForNextLoad = layout;
+      return layout;
+    },
+    selectChannel(channelId) {
+      selected.push(channelId);
+      return channelId;
+    },
+    toolbarAction(action, detail) {
+      actions.push([action, detail]);
+    },
+  });
+
+  assert.equal(viewer.handleChannelLayoutHotkey('1'), true);
+  assert.equal(viewer.mode, 'single');
+  assert.deepEqual(selected, ['c0']);
+  assert.deepEqual(actions.at(-1), ['view-mode', {mode: 'single'}]);
+
+  assert.equal(viewer.handleChannelLayoutHotkey('2'), true);
+  assert.deepEqual(selected.at(-1), 'c1');
+
+  assert.equal(viewer.handleChannelLayoutHotkey('3'), true);
+  assert.equal(viewer.mode, 'composite');
+  assert.deepEqual(actions.at(-1), ['view-mode', {mode: 'composite'}]);
+
+  viewer.channels = [{id: 'only'}];
+  assert.equal(viewer.handleChannelLayoutHotkey('1'), false);
+  assert.equal(viewer.handleChannelLayoutHotkey('x'), false);
+});
+
 test('setTIndex and setZIndex are no-ops when the axis is absent', async () => {
   const viewer = Object.create(RasterViewer.prototype);
   Object.assign(viewer, {

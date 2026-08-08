@@ -7,6 +7,34 @@ physical axes, typed rectangle and line ROIs, and non-interactive X/Y overlays.
 
 The existing [`PlotlyRasterViewer`](raster_viewer.md) remains a separate widget.
 
+## Chrome notes
+
+Three chrome layers (names match Viewer options toggles where applicable):
+
+1. **Viewer options** — hamburger menu, pinned leftmost on the top toolbar.
+   Toggles Axes / ROIs / Channel Toolbars / ROI Toolbar and Reset view.
+2. **Top toolbar (rest)** — channel layout radios (hidden for one channel),
+   channel select (single mode), Sliding-Z, then a thin divider (when those
+   neighbors are visible) and the **ROI Toolbar** strip
+   (add/delete/edit/commit/cancel) in normal left-to-right flow.
+3. **Channel Toolbars** — per-pane header rows (channel index, enable, LUT,
+   Set contrast) plus **Copy view to clipboard**; shown/hidden together via
+   the Channel Toolbars option. Copy uses the browser Clipboard API on web,
+   and on NiceGUI native/pywebview composes a PNG in JS then writes via
+   ``nicewidgets.utils.clipboard.copy_png_bytes_to_native_clipboard``
+   (requires the optional desktop extras: ``pyperclipimg`` + Pillow).
+
+Also:
+
+- ROI edit **Commit** / **Cancel** use muted green / red icon styling.
+- **Set contrast** opens a histogram dialog on `document.body` (so it stacks
+  above sibling viewers). A **Log** checkbox (default on) switches histogram
+  Y scaling between log and linear.
+- After a pointer click/press inside a viewer (ignored while typing in inputs):
+  with **two or more channels**, keys ``1`` / ``2`` switch to one-channel view
+  for channel 0 / 1, and ``3`` switches to composite; **Enter** runs
+  Viewer options → Reset view (same as the menu action).
+
 ## Embed
 
 ```python

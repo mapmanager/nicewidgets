@@ -34,6 +34,8 @@ def test_widget_config_exposes_slice_wheel_direction() -> None:
     assert "wheelZoomFactor: this.wheelZoomFactor" in component
     assert "initialChannelToolbarsVisible: {type: Boolean, default: true}" in component
     assert "setChannelToolbarsVisible(this.initialChannelToolbarsVisible)" in component
+    assert "hostClipboardBridge: {type: Boolean, default: true}" in component
+    assert "hostClipboardBridge: this.hostClipboardBridge" in component
 
 
 def test_component_declares_the_complete_xy_plot_bridge() -> None:
@@ -62,14 +64,19 @@ def test_component_declares_recent_lifecycle_and_presentation_bridges() -> None:
         assert f"async {method}" in component
 
 
-def test_single_channel_controls_are_fixed_canvas_chrome() -> None:
-    """Verify one-channel options and Sliding-Z share canvas-owned chrome."""
+def test_single_channel_keeps_top_toolbar_chrome() -> None:
+    """One-channel views keep the top toolbar; layout radios stay hidden."""
     viewer = (WEB_ASSETS / "raster-viewer.js").read_text()
     stylesheet = (WEB_ASSETS / "raster-viewer.css").read_text()
-    assert "overlayControls.className = 'rv-pane-overlay-controls'" in viewer
-    assert "if (slidingZControls) overlayControls.append(slidingZControls)" in viewer
-    assert "overlayControls.append(this.optionsMenu)" in viewer
-    assert "wrap.append(overlayControls)" in viewer
+    assert "overlayControls.className = 'rv-pane-overlay-controls'" not in viewer
+    assert "this.toolbar.hidden = false" in viewer
+    assert "layoutGroup.hidden = this.channels.length === 1" in viewer
+    assert "rv-toolbar-icon-button--commit" in viewer
+    assert "rv-toolbar-icon-button--cancel" in viewer
     assert "menuPanel.append(resetButton)" in viewer
-    assert ".rv-pane-overlay-controls" in stylesheet
-    assert "position: absolute" in stylesheet
+    assert "syncRoiToolbarDivider" in viewer
+    assert ".rv-toolbar-icon-button--commit" in stylesheet
+    assert ".rv-toolbar-icon-button--cancel" in stylesheet
+    assert ".rv-toolbar-divider" in stylesheet
+    assert "margin-left: auto" not in stylesheet.split(".rv-roi-toolbar")[1].split("}")[0]
+    assert ".rv-pane-overlay-controls" not in stylesheet

@@ -33,6 +33,9 @@ export default {
     roiHostMode: {type: String, default: 'local'},
     invertSliceWheel: {type: Boolean, default: true},
     wheelZoomFactor: {type: Number, default: 1.06},
+    // Default on so native/pywebview Copy view works even if the Python prop
+    // is late or string-coerced; JS still prefers the browser Clipboard API.
+    hostClipboardBridge: {type: Boolean, default: true},
     resourcePath: {type: String, required: true},
   },
   mounted() {
@@ -52,7 +55,7 @@ export default {
     async initializeViewer() {
       const stylesheetUrl = `${this.resourcePath}/raster-viewer.css`;
       await ensureStylesheet(stylesheetUrl);
-      const module = await import(`${this.resourcePath}/raster-viewer.js?v=roi-name-1`);
+      const module = await import(`${this.resourcePath}/raster-viewer.js?v=enter-reset-1`);
       this.viewer = new module.RasterViewer(this.$refs.host, {
         theme: this.initialTheme,
         invertSliceWheel: this.invertSliceWheel,
@@ -60,6 +63,7 @@ export default {
         roiHostMode: this.roiHostMode,
         roiToolbarVisible: this.initialRoiToolbarVisible,
         roiChromeEnabled: this.roiChromeEnabled,
+        hostClipboardBridge: this.hostClipboardBridge,
       });
       if (this.descriptorUrl) await this.fetchAndLoad(this.descriptorUrl, this.viewer);
       this.viewer.setAxesVisible(this.initialAxesVisible);

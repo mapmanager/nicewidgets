@@ -1,4 +1,5 @@
-.rv-root[data-theme="dark"] {
+.rv-root[data-theme="dark"],
+.rv-range-popover[data-theme="dark"] {
   color-scheme: dark;
   --rv-bg: #0b1220;
   --rv-panel: #111827;
@@ -20,7 +21,8 @@
   --rv-histogram-handle-line: #e2e8f0;
 }
 
-.rv-root[data-theme="light"] {
+.rv-root[data-theme="light"],
+.rv-range-popover[data-theme="light"] {
   color-scheme: light;
   --rv-bg: #f8fafc;
   --rv-panel: #ffffff;
@@ -75,10 +77,21 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  margin-left: auto;
 }
 
 .rv-roi-toolbar[hidden] {
+  display: none;
+}
+
+.rv-toolbar-divider {
+  width: 1px;
+  height: 22px;
+  flex: 0 0 auto;
+  align-self: center;
+  background: var(--rv-line);
+}
+
+.rv-toolbar-divider[hidden] {
   display: none;
 }
 
@@ -118,6 +131,30 @@
   height: 24px;
   min-width: 28px;
   padding: 2px;
+}
+
+.rv-toolbar .rv-toolbar-icon-button--commit {
+  background: rgb(34 197 94 / 28%);
+  border-color: rgb(34 197 94 / 55%);
+  color: #86efac;
+}
+
+.rv-root[data-theme="light"] .rv-toolbar .rv-toolbar-icon-button--commit {
+  background: rgb(22 163 74 / 18%);
+  border-color: rgb(22 163 74 / 45%);
+  color: #15803d;
+}
+
+.rv-toolbar .rv-toolbar-icon-button--cancel {
+  background: rgb(239 68 68 / 28%);
+  border-color: rgb(239 68 68 / 55%);
+  color: #fca5a5;
+}
+
+.rv-root[data-theme="light"] .rv-toolbar .rv-toolbar-icon-button--cancel {
+  background: rgb(220 38 38 / 14%);
+  border-color: rgb(220 38 38 / 40%);
+  color: #b91c1c;
 }
 
 .rv-toolbar-icon-button svg,
@@ -186,7 +223,6 @@
 
 .rv-options-menu {
   position: relative;
-  margin-left: auto;
 }
 
 .rv-options-menu summary {
@@ -207,9 +243,12 @@
 
 .rv-options-panel {
   position: absolute;
-  z-index: 30;
+  /* Open to the right of the leftmost hamburger so the panel stays inside the
+     viewer pane (not under CloudScope's left toolbar). */
+  z-index: 40;
   top: calc(100% + 5px);
-  right: 0;
+  left: 0;
+  right: auto;
   display: grid;
   min-width: 170px;
   gap: 8px;
@@ -321,9 +360,10 @@
   text-align: center;
 }
 
-.rv-root .rv-range-popover {
+.rv-range-popover {
   position: fixed;
-  z-index: 1000;
+  z-index: 10000;
+  box-sizing: border-box;
   width: 330px;
   padding: 7px;
   border: 1px solid var(--rv-accent);
@@ -331,18 +371,19 @@
   background: var(--rv-popover-bg);
   color: var(--rv-text);
   box-shadow: 0 16px 38px var(--rv-shadow);
+  font-family: system-ui, sans-serif;
 }
 
-.rv-root .rv-range-popover[hidden] {
+.rv-range-popover[hidden] {
   display: none;
 }
 
-.rv-root .rv-histogram-wrap {
+.rv-range-popover .rv-histogram-wrap {
   padding: 4px;
   background: var(--rv-canvas-bg);
 }
 
-.rv-root .rv-range-histogram {
+.rv-range-popover .rv-range-histogram {
   display: block;
   width: 300px;
   height: 100px;
@@ -350,7 +391,7 @@
   touch-action: none;
 }
 
-.rv-root .rv-range-fields {
+.rv-range-popover .rv-range-fields {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -358,7 +399,7 @@
   font-size: 10px;
 }
 
-.rv-root .rv-range-fields label {
+.rv-range-popover .rv-range-fields label {
   display: flex;
   align-items: center;
   gap: 3px;
@@ -366,15 +407,39 @@
   font-size: 10px;
 }
 
-.rv-root .rv-range-fields input {
+.rv-range-popover .rv-range-fields input[type='number'] {
   width: 92px;
   padding: 2px 4px;
   font-size: 10px;
 }
 
-.rv-root .rv-range-fields button {
+.rv-range-popover .rv-range-fields button,
+.rv-range-popover .rv-range-fields input {
+  border: 1px solid var(--rv-line);
+  border-radius: 6px;
+  background: var(--rv-control-bg);
+  color: var(--rv-text);
+}
+
+.rv-range-popover .rv-range-fields button {
   padding: 2px 6px;
   font-size: 10px;
+}
+
+.rv-range-popover .rv-range-log {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--rv-muted);
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.rv-range-popover .rv-range-log input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--rv-accent);
 }
 
 .rv-stage {
@@ -459,32 +524,6 @@
   flex: 1;
   min-height: 0;
   min-width: 0;
-}
-
-.rv-pane-overlay-controls {
-  position: absolute;
-  z-index: 20;
-  top: 6px;
-  right: 6px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.rv-pane-overlay-controls .rv-options-menu {
-  margin-left: 0;
-}
-
-.rv-pane-overlay-controls .rv-options-menu summary,
-.rv-pane-overlay-controls .rv-sliding-z-controls {
-  background: var(--rv-panel);
-  box-shadow: 0 3px 10px var(--rv-shadow);
-}
-
-.rv-pane-overlay-controls .rv-sliding-z-controls {
-  padding: 3px 6px;
-  border: 1px solid var(--rv-line);
-  border-radius: 6px;
 }
 
 .rv-canvas-wrap {
