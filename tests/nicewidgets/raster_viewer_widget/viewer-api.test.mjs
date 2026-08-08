@@ -363,6 +363,34 @@ test('setLayout single is preserved across the next multi-channel load mode choi
   assert.equal(viewer.mode, 'single');
 });
 
+test('setLayout single keeps channel select hidden for one-channel datasets', () => {
+  // Regresses file-switch flash: CloudScope set_layout('single') before load
+  // must not unhide the channel dropdown when channels.length === 1.
+  const viewer = Object.create(RasterViewer.prototype);
+  const channelSelect = {hidden: true};
+  Object.assign(viewer, {
+    channels: [{id: '0'}],
+    dataset: {id: 'ds'},
+    mode: 'single',
+    lastMultiChannelMode: 'composite',
+    layoutForNextLoad: null,
+    modeControls: [],
+    channelSelect,
+    syncRoiToolbarDivider() {},
+    render() {},
+  });
+  assert.equal(viewer.setLayout('single'), 'single');
+  assert.equal(channelSelect.hidden, true);
+  assert.equal(viewer.layoutForNextLoad, 'single');
+
+  viewer.channels = [{id: '0'}, {id: '1'}];
+  assert.equal(viewer.setLayout('single'), 'single');
+  assert.equal(channelSelect.hidden, false);
+
+  assert.equal(viewer.setLayout('composite'), 'composite');
+  assert.equal(channelSelect.hidden, true);
+});
+
 test('hostClipboardBridge coercion accepts NiceGUI string true', () => {
   // Mirrors RasterViewer constructor coercion (bool or "true" string).
   const coerce = (value) => value === true || value === 'true';

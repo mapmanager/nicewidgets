@@ -382,7 +382,11 @@ export class RasterViewer {
     for (const input of this.modeControls) {
       if (input.type === 'radio') input.checked = input.value === layout;
     }
-    if (this.channelSelect) this.channelSelect.hidden = layout !== 'single';
+    // Match buildToolbar: one-channel datasets never show the channel <select>
+    // (CloudScope set_layout('single') before load_source must not flash it).
+    if (this.channelSelect) {
+      this.channelSelect.hidden = this.channels.length === 1 || layout !== 'single';
+    }
     this.syncRoiToolbarDivider();
     if (this.dataset && this.channels.length > 0) this.render();
     return this.mode;

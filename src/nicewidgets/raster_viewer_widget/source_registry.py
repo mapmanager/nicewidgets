@@ -186,6 +186,32 @@ def source_plane(
         plus_minus_z,
         len(body),
     )
+    height, width = (int(plane.shape[0]), int(plane.shape[1])) if plane.ndim == 2 else (-1, -1)
+    itemsize = int(plane.dtype.itemsize)
+    expected_bytes = height * width * itemsize if height >= 0 else -1
+    if plane.dtype.kind == "u" and itemsize == 2:
+        transport_dtype = "uint16"
+        encoding = "raw-u16-le"
+    elif plane.dtype.kind == "f" and itemsize == 4:
+        transport_dtype = "float32"
+        encoding = "raw-f32-le"
+    else:
+        transport_dtype = str(plane.dtype)
+        encoding = f"raw-{transport_dtype}"
+    LOGGER.info(
+        "Widget plane transport %s/%s dtype=%s encoding=%s shape=%sx%s "
+        "itemsize=%d expected_bytes=%d body_bytes=%d match=%s",
+        token[:8],
+        channel_id,
+        transport_dtype,
+        encoding,
+        height,
+        width,
+        itemsize,
+        expected_bytes,
+        len(body),
+        expected_bytes == len(body),
+    )
     return Response(
         content=body,
         media_type="application/octet-stream",
