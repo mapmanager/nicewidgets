@@ -10,7 +10,10 @@ import {
   sliceControlPaneIndex,
   sliceValueLabel,
 } from '../../../src/nicewidgets/raster_viewer_widget/web/raster-viewer.js';
-import {RoiInteractionState} from '../../../src/nicewidgets/raster_viewer_widget/web/roi-overlay.js';
+import {
+  RoiInteractionState,
+  RoiOverlay,
+} from '../../../src/nicewidgets/raster_viewer_widget/web/roi-overlay.js';
 import {
   dragZoomMode,
   normalizeWheelZoomFactor,
@@ -609,4 +612,129 @@ test('nonsquare axis zoom changes only its dominant transform', () => {
     {scaleX: viewport.scaleX, offsetX: viewport.offsetX},
     xState,
   );
+});
+
+test('IDLE ROI press does not capture; short click selects, drag does not', () => {
+  const selected = [];
+  const overlay = Object.create(RoiOverlay.prototype);
+  Object.assign(overlay, {
+    viewer: {
+      showRois: true,
+      roiState: RoiInteractionState.IDLE,
+      selectRoi: (roiId) => { selected.push(roiId); },
+    },
+    pendingIdleSelect: null,
+    active: null,
+    hitRoi: (point) => (point.x < 10 ? {roiId: 7} : null),
+  });
+  assert.equal(overlay.pointerDown({shiftKey: false}, {x: 5, y: 5}), false);
+  assert.deepEqual(overlay.pendingIdleSelect, {roiId: 7, start: {x: 5, y: 5}});
+  assert.equal(overlay.pointerUp({}, {x: 6, y: 5}), true);
+  assert.deepEqual(selected, [7]);
+  assert.equal(overlay.pendingIdleSelect, null);
+
+  assert.equal(overlay.pointerDown({shiftKey: false}, {x: 5, y: 5}), false);
+  assert.equal(overlay.pointerUp({}, {x: 20, y: 5}), false);
+  assert.deepEqual(selected, [7]);
+});
+
+test('suppressDoubleClick allows IDLE reset on ROI; blocks only on edit draft', () => {
+  const overlay = Object.create(RoiOverlay.prototype);
+  Object.assign(overlay, {
+    viewer: {
+      showRois: true,
+      roiState: RoiInteractionState.IDLE,
+      roiDraft: null,
+    },
+    hitHandle: (point) => (point.x < 10 ? 'se' : null),
+    hitDistance: (point) => (point.x < 10 ? 0 : 100),
+  });
+  assert.equal(overlay.suppressDoubleClick({x: 5, y: 5}), false);
+  assert.equal(overlay.suppressDoubleClick({x: 50, y: 5}), false);
+
+  overlay.viewer.roiState = RoiInteractionState.EDITING;
+  overlay.viewer.roiDraft = {roiType: 'rectroi', bounds: {}};
+  assert.equal(overlay.suppressDoubleClick({x: 50, y: 50}), false);
+  assert.equal(overlay.suppressDoubleClick({x: 5, y: 5}), true);
+});
+
+test('EDITING captures only draft hits; outside allows viewport gestures', () => {
+  const draft = {roiType: 'rectroi', bounds: {}};
+  const overlay = Object.create(RoiOverlay.prototype);
+  Object.assign(overlay, {
+    viewer: {
+      showRois: true,
+      roiState: RoiInteractionState.EDITING,
+      roiDraft: draft,
+      dataset: {width: 100, height: 100},
+      activeEditOverlay: null,
+      redrawRois: () => {},
+    },
+    pendingIdleSelect: null,
+    active: null,
+    viewport: {canvasToSource: (x, y) => ({row: y, col: x})},
+    hitHandle: (point) => (point.x < 10 ? 'se' : null),
+    hitDistance: (point) => (point.x < 10 ? 0 : 100),
+  });
+  assert.equal(overlay.pointerDown({shiftKey: false}, {x: 50, y: 50}), false);
+  assert.equal(overlay.active, null);
+  assert.equal(overlay.suppressDoubleClick({x: 50, y: 50}), false);
+
+  assert.equal(overlay.pointerDown({shiftKey: false}, {x: 5, y: 5}), true);
+  assert.equal(overlay.active?.kind, 'resize');
+  assert.equal(overlay.suppressDoubleClick({x: 5, y: 5}), true);
+});
+
+test('selectChannel does not rebuild single-mode panes when unchanged', () => {
+  let renders = 0;
+  const viewer = Object.create(RasterViewer.prototype);
+  Object.assign(viewer, {
+    channels: [{id: '0'}, {id: '1'}],
+    selected: '0',
+    mode: 'single',
+    channelSelect: {value: '0'},
+    dataset: {id: 'ds'},
+    dispatch: () => { throw new Error('silent select must not dispatch'); },
+    render: () => { renders += 1; },
+  });
+  assert.equal(viewer.selectChannel('0', false), '0');
+  assert.equal(renders, 0);
+  assert.equal(viewer.selectChannel('1', false), '1');
+  assert.equal(renders, 1);
+  assert.equal(viewer.selected, '1');
+});
+
+test('ROI toolbar keeps idle controls visible while editing', () => {
+  const select = {hidden: false, disabled: false};
+  const add = {hidden: false, disabled: false};
+  const del = {hidden: false, disabled: false};
+  const edit = {hidden: false, disabled: false};
+  const commit = {hidden: true, disabled: true};
+  const cancel = {hidden: true, disabled: true};
+  const viewer = Object.create(RasterViewer.prototype);
+  Object.assign(viewer, {
+    roiState: RoiInteractionState.IDLE,
+    selectedRoiId: 1,
+    roiIdleControls: [select, add, del, edit],
+    roiEditControls: [commit, cancel],
+    roiDeleteButton: del,
+    roiEditButton: edit,
+  });
+  viewer.updateRoiToolbarEnabled();
+  assert.equal(select.hidden, false);
+  assert.equal(select.disabled, false);
+  assert.equal(del.disabled, false);
+  assert.equal(commit.hidden, true);
+
+  viewer.roiState = RoiInteractionState.EDITING;
+  viewer.updateRoiToolbarEnabled();
+  assert.equal(select.hidden, false);
+  assert.equal(add.hidden, false);
+  assert.equal(select.disabled, true);
+  assert.equal(add.disabled, true);
+  assert.equal(del.disabled, true);
+  assert.equal(edit.disabled, true);
+  assert.equal(commit.hidden, false);
+  assert.equal(cancel.hidden, false);
+  assert.equal(commit.disabled, false);
 });

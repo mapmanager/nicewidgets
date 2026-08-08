@@ -1,9 +1,27 @@
 /** Thin instance-scoped NiceGUI adapter for the framework-independent viewer. */
 
+/**
+ * Bump when raster-viewer.css or the entry JS module changes.
+ *
+ * Web browsers cache NiceGUI static assets aggressively; native/pywebview often
+ * does not. Versioning the CSS URL (same as the JS entry) keeps app and web
+ * chrome in sync without divergent code paths.
+ */
+const RASTER_VIEWER_ASSETS_VERSION = 'idle-dblclick-1';
+
 const stylesheetPromises = new Map();
 
 function ensureStylesheet(url) {
   if (stylesheetPromises.has(url)) return stylesheetPromises.get(url);
+  // Drop older raster-viewer stylesheets so SPA remounts cannot keep stale rules
+  // (e.g. pre-fix margin-left:auto) stacked with the new sheet.
+  for (const link of document.querySelectorAll('link[data-raster-viewer-css]')) {
+    const previous = link.dataset.rasterViewerCss;
+    if (previous && previous !== url) {
+      link.remove();
+      stylesheetPromises.delete(previous);
+    }
+  }
   const promise = new Promise((resolve, reject) => {
     const stylesheet = document.createElement('link');
     stylesheet.rel = 'stylesheet';
@@ -53,9 +71,13 @@ export default {
   },
   methods: {
     async initializeViewer() {
-      const stylesheetUrl = `${this.resourcePath}/raster-viewer.css`;
+      const stylesheetUrl = (
+        `${this.resourcePath}/raster-viewer.css?v=${RASTER_VIEWER_ASSETS_VERSION}`
+      );
       await ensureStylesheet(stylesheetUrl);
-      const module = await import(`${this.resourcePath}/raster-viewer.js?v=enter-reset-1`);
+      const module = await import(
+        `${this.resourcePath}/raster-viewer.js?v=${RASTER_VIEWER_ASSETS_VERSION}`
+      );
       this.viewer = new module.RasterViewer(this.$refs.host, {
         theme: this.initialTheme,
         invertSliceWheel: this.invertSliceWheel,

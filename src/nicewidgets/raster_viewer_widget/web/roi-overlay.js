@@ -2,6 +2,8 @@
 
 const HANDLE_SIZE = 8;
 const HIT_TOLERANCE = 6;
+/** Max pointer travel (canvas px) to treat an IDLE ROI press as a click-select. */
+const IDLE_CLICK_TOLERANCE = 6;
 
 export const RoiType = Object.freeze({
   RECT: 'rectroi',
@@ -173,6 +175,8 @@ export class RoiOverlay {
     this.viewport = viewport;
     this.viewer = viewer;
     this.active = null;
+    /** @type {{roiId:number,start:{x:number,y:number}}|null} */
+    this.pendingIdleSelect = null;
   }
 
   screenGeometry(roi) {
@@ -235,33 +239,39 @@ export class RoiOverlay {
   }
 
   pointerDown(event, point) {
-    if (!this.viewer.showRois || event.shiftKey) return false;
-    if (this.viewer.roiState === RoiInteractionState.IDLE) {
-      const hit = this.hitRoi(point);
-      if (!hit) return false;
-      this.active = {kind: 'select', roiId: hit.roiId};
-      return true;
+    if (!this.viewer.showRois || event.shiftKey) {
+      this.pendingIdleSelect = null;
+      return false;
     }
+    if (this.viewer.roiState === RoiInteractionState.IDLE) {
+      // Do not capture: viewport must receive drag for zoom. Click-select on pointerUp.
+      const hit = this.hitRoi(point);
+      this.pendingIdleSelect = hit
+        ? {roiId: hit.roiId, start: {x: point.x, y: point.y}}
+        : null;
+      return false;
+    }
+    this.pendingIdleSelect = null;
+    // CREATING / EDITING: capture only presses on the draft; outside → viewport zoom/pan.
     const draft = this.viewer.roiDraft;
-    if (!draft) return true;
-    this.viewer.activeEditOverlay = this;
+    if (!draft) return false;
     const sourcePoint = this.viewport.canvasToSource(point.x, point.y);
     const handle = this.hitHandle(point, draft);
     const onBody = this.hitDistance(point, draft) <= HIT_TOLERANCE;
-    if (handle !== null || onBody) {
-      this.active = {
-        kind: handle !== null ? 'resize' : 'move',
-        handle,
-        start: sourcePoint,
-        original: draft.roiType === RoiType.RECT ? {...draft.bounds} : {...draft.endpoints},
-      };
-    }
+    if (handle === null && !onBody) return false;
+    this.viewer.activeEditOverlay = this;
+    this.active = {
+      kind: handle !== null ? 'resize' : 'move',
+      handle,
+      start: sourcePoint,
+      original: draft.roiType === RoiType.RECT ? {...draft.bounds} : {...draft.endpoints},
+    };
     this.viewer.redrawRois();
     return true;
   }
 
   pointerMove(_event, point) {
-    if (!this.active || this.active.kind === 'select') return Boolean(this.active);
+    if (!this.active) return false;
     const draft = this.viewer.roiDraft;
     const current = this.viewport.canvasToSource(point.x, point.y);
     const deltaRow = current.row - this.active.start.row;
@@ -283,16 +293,47 @@ export class RoiOverlay {
     return true;
   }
 
-  pointerUp() {
+  pointerUp(_event, point) {
+    if (this.pendingIdleSelect) {
+      const pending = this.pendingIdleSelect;
+      this.pendingIdleSelect = null;
+      const travel = point
+        ? Math.hypot(point.x - pending.start.x, point.y - pending.start.y)
+        : 0;
+      if (travel <= IDLE_CLICK_TOLERANCE) {
+        this.viewer.selectRoi(pending.roiId, {emit: true});
+        return true;
+      }
+      return false;
+    }
     if (!this.active) return false;
-    if (this.active.kind === 'select') this.viewer.selectRoi(this.active.roiId, {emit: true});
     this.active = null;
     return true;
   }
 
-  pointerCancel() { this.active = null; }
+  pointerCancel() {
+    this.active = null;
+    this.pendingIdleSelect = null;
+  }
 
-  suppressDoubleClick() { return this.viewer.roiState !== RoiInteractionState.IDLE; }
+  /**
+   * Suppress viewport dblclick-reset only while interacting with an edit draft.
+   *
+   * IDLE allows reset everywhere (including over a committed ROI). The earlier
+   * IDLE-on-ROI suppress was addressing a false “click resets zoom” symptom
+   * whose real cause was a host re-select rebuilding single-mode panes.
+   *
+   * @param {{x:number,y:number}|null} [point] Canvas point under the double-click.
+   * @returns {boolean} True when the viewport should ignore the double-click.
+   */
+  suppressDoubleClick(point = null) {
+    if (this.viewer.roiState === RoiInteractionState.IDLE) return false;
+    if (!this.viewer.showRois || point == null) return false;
+    const draft = this.viewer.roiDraft;
+    if (!draft) return false;
+    return this.hitHandle(point, draft) !== null
+      || this.hitDistance(point, draft) <= HIT_TOLERANCE;
+  }
 
   draw() {
     this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);

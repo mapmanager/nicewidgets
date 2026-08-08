@@ -7,6 +7,10 @@ physical axes, typed rectangle and line ROIs, and non-interactive X/Y overlays.
 
 The existing [`PlotlyRasterViewer`](raster_viewer.md) remains a separate widget.
 
+App (native) and web use the **same** JS/CSS under `web/`. Web browsers cache those
+static files; when chrome/CSS changes, bump `RASTER_VIEWER_ASSETS_VERSION` in
+`web/raster_viewer_component.js` (and any `?v=` on touched ES module imports).
+
 ## Chrome notes
 
 Three chrome layers (names match Viewer options toggles where applicable):
@@ -26,7 +30,15 @@ Three chrome layers (names match Viewer options toggles where applicable):
 
 Also:
 
-- ROI edit **Commit** / **Cancel** use muted green / red icon styling.
+- ROI edit **Commit** / **Cancel** use muted green / red icon styling. While
+  editing, idle ROI controls stay visible but disabled; Commit/Cancel appear
+  on the same row (hidden when not editing).
+- IDLE: plain drag zooms (including over an ROI); shift+drag pans. A short
+  click on an ROI selects it without changing the viewport. Double-click resets
+  the view everywhere (including over an ROI).
+- CREATING/EDITING: press on the draft moves/resizes it; plain drag / shift+drag
+  / double-click **outside** the draft still zoom / pan / reset. Double-click on
+  the draft does not reset.
 - **Set contrast** opens a histogram dialog on `document.body` (so it stacks
   above sibling viewers). A **Log** checkbox (default on) switches histogram
   Y scaling between log and linear.

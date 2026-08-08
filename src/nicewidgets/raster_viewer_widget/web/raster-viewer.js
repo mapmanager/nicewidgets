@@ -6,7 +6,7 @@ import {
   clipboardImageSupported,
   composeViewportPngDataUrl,
   copyViewportToClipboard,
-} from './clipboard.js';
+} from './clipboard.js?v=copy-1';
 import {lucideIcon} from './icons.js?v=roi-chrome-1';
 import {LUT_LABELS, lutTable} from './lut.js';
 import {
@@ -22,8 +22,8 @@ import {
   RoiInteractionState,
   RoiOverlay,
   RoiType,
-} from './roi-overlay.js?v=roi-name-1';
-import {RasterViewport} from './viewport.js';
+} from './roi-overlay.js?v=idle-dblclick-1';
+import {RasterViewport} from './viewport.js?v=roi-click-1';
 import {PlaneCache} from './plane-cache.js';
 import {normalizeViewerTheme, readChromeTheme, ViewerTheme} from './theme.js';
 import {ViewerTooltip} from './tooltip.js';
@@ -473,7 +473,7 @@ export class RasterViewer {
     this.zSlider = null;
     this.zOutput = null;
 
-    // Viewer options stay leftmost; ROI strip keeps margin-left:auto on the right.
+    // Viewer options leftmost; layout / Sliding-Z / ROI strip follow in document order.
     const menu = document.createElement('details');
     menu.className = 'rv-options-menu';
     const menuButton = document.createElement('summary');
@@ -729,17 +729,19 @@ export class RasterViewer {
   updateRoiToolbarEnabled() {
     const editing = this.roiState !== RoiInteractionState.IDLE;
     const hasSelection = this.selectedRoiId != null;
+    // Keep idle chrome visible during edit so Commit/Cancel append without reshuffling.
     for (const control of this.roiIdleControls) {
-      control.hidden = editing;
-      control.disabled = editing || (control === this.roiDeleteButton || control === this.roiEditButton
-        ? !hasSelection
-        : false);
+      control.hidden = false;
+      if (control === this.roiDeleteButton || control === this.roiEditButton) {
+        control.disabled = editing || !hasSelection;
+      } else {
+        control.disabled = editing;
+      }
     }
     for (const control of this.roiEditControls) {
       control.hidden = !editing;
       control.disabled = !editing;
     }
-    if (this.roiAddButton) this.roiAddButton.disabled = editing;
   }
 
   /**
@@ -1350,9 +1352,12 @@ export class RasterViewer {
   selectChannel(channelId, notify = true) {
     const channel = this.channels.find(candidate => candidate.id === String(channelId));
     if (!channel) throw new Error(`unknown channel: ${channelId}`);
+    // Re-selecting the same channel must not rebuild panes: hosts sync channel
+    // after ROI selection, and render() → setImage(reset) would wipe zoom.
+    const changed = this.selected !== channel.id;
     this.selected = channel.id;
     if (this.channelSelect) this.channelSelect.value = channel.id;
-    if (this.mode === 'single') this.render();
+    if (changed && this.mode === 'single') this.render();
     if (notify) this.dispatch('raster-channel-selected', {
       dataset_id: this.dataset.id,
       channel_id: channel.id,

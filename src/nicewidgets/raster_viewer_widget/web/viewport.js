@@ -111,8 +111,9 @@ export class RasterViewport {
     }, {passive: false});
 
     this.interactionCanvas.addEventListener('dblclick', event => {
-      if (!this.containsPlotPoint(this.point(event))) return;
-      if (this.overlay?.suppressDoubleClick()) return;
+      const point = this.point(event);
+      if (!this.containsPlotPoint(point)) return;
+      if (this.overlay?.suppressDoubleClick(point)) return;
       event.preventDefault();
       this.reset();
       this.emit('reset', true);
@@ -156,7 +157,9 @@ export class RasterViewport {
 
     this.interactionCanvas.addEventListener('pointerup', event => {
       const point = this.clampToPlot(this.point(event));
-      if (this.overlay?.pointerUp(event, point)) {
+      // IDLE ROI click-select claims the gesture; skip zoom completion then.
+      const overlayClaimed = Boolean(this.overlay?.pointerUp(event, point));
+      if (!this.drag) {
         try {
           this.interactionCanvas.releasePointerCapture(event.pointerId);
         } catch (_) {
@@ -164,17 +167,20 @@ export class RasterViewport {
         }
         return;
       }
-      if (!this.drag) return;
       const drag = this.drag;
       this.drag = null;
       this.clearDragClasses();
-      if (!drag.pan && drag.zoomMode === 'region') this.zoomRegion(drag.start, drag.last);
-      if (!drag.pan && drag.zoomMode === 'x') this.zoomAxis('x', drag.start, drag.last);
-      if (!drag.pan && drag.zoomMode === 'y') this.zoomAxis('y', drag.start, drag.last);
-      this.draw();
-      const cause = drag.pan ? 'pan' : drag.zoomMode === 'x'
-        ? 'region-x' : drag.zoomMode === 'y' ? 'region-y' : 'region';
-      this.emit(cause, true);
+      if (!overlayClaimed) {
+        if (!drag.pan && drag.zoomMode === 'region') this.zoomRegion(drag.start, drag.last);
+        if (!drag.pan && drag.zoomMode === 'x') this.zoomAxis('x', drag.start, drag.last);
+        if (!drag.pan && drag.zoomMode === 'y') this.zoomAxis('y', drag.start, drag.last);
+        if (drag.pan || drag.zoomMode !== 'pending') {
+          this.draw();
+          const cause = drag.pan ? 'pan' : drag.zoomMode === 'x'
+            ? 'region-x' : drag.zoomMode === 'y' ? 'region-y' : 'region';
+          this.emit(cause, true);
+        }
+      }
       try {
         this.interactionCanvas.releasePointerCapture(event.pointerId);
       } catch (_) {
