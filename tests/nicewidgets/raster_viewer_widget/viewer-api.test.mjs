@@ -16,9 +16,32 @@ import {
 } from '../../../src/nicewidgets/raster_viewer_widget/web/roi-overlay.js';
 import {
   dragZoomMode,
+  formatTick,
+  niceStep,
+  niceTickValues,
   normalizeWheelZoomFactor,
   RasterViewport,
 } from '../../../src/nicewidgets/raster_viewer_widget/web/viewport.js';
+
+test('niceStep picks 1/2/5×10ⁿ spacing for a typical physical window', () => {
+  assert.equal(niceStep(3.2, 47.8, 5), 10);
+  assert.equal(niceStep(0, 1, 5), 0.2);
+  assert.equal(niceStep(0, 100, 5), 20);
+  assert.equal(niceStep(10, 10, 5), null);
+});
+
+test('niceTickValues stay inside the range and omit ugly endpoints', () => {
+  assert.deepEqual(niceTickValues(3.2, 47.8, 5), [10, 20, 30, 40]);
+  assert.deepEqual(niceTickValues(0, 100, 5), [0, 20, 40, 60, 80, 100]);
+  assert.deepEqual(niceTickValues(0.1, 0.9, 5), [0.2, 0.4, 0.6, 0.8]);
+});
+
+test('formatTick prefers short labels for nice steps', () => {
+  assert.equal(formatTick(20, 10), '20');
+  assert.equal(formatTick(0.4, 0.2), '0.4');
+  assert.equal(formatTick(1.2e-4), '1.20e-4');
+  assert.equal(formatTick(12345), '1.23e+4');
+});
 
 test('slice control follows the agreed pane for each layout', () => {
   assert.equal(sliceControlPaneIndex('side', 3), 2);
@@ -226,6 +249,7 @@ test('ROI visibility redraws but cannot hide an active edit draft', () => {
   let redraws = 0;
   const viewer = Object.create(RasterViewer.prototype);
   Object.assign(viewer, {
+    roiChromeEnabled: true,
     showRois: true,
     roisInput: {checked: true},
     roiState: RoiInteractionState.IDLE,

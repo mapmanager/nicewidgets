@@ -6,20 +6,131 @@ const MIN_HOME_ZOOM = 0.1;
 const MAX_HOME_ZOOM = 1000;
 const MIN_REGION_PIXELS = 12;
 const AXIS_LOCK_PIXELS = 8;
-const TICK_COUNT = 5;
 
+/**
+ * Canvas axis chrome defaults (font, tick density, gutters).
+ *
+ * Kept on the viewport instance as ``axisStyle`` so a future Python/Vue API can
+ * overwrite the same fields without changing ``drawAxes`` call sites.
+ *
+ * @typedef {object} RasterAxisStyle
+ * @property {number} fontSize Axis tick and title font size in CSS pixels.
+ * @property {string} fontFamily CSS ``font-family`` stack for axis text.
+ * @property {number} tickCount Target number of nice ticks per axis.
+ * @property {number} tickLength Tick-mark length in canvas pixels.
+ * @property {number} tickLabelOffsetX Pixels below the x-axis baseline for labels.
+ * @property {number} tickLabelOffsetY Pixels left of the y-axis line for labels.
+ * @property {{left:number,right:number,top:number,bottom:number}} margins
+ *   Fixed plot gutters reserved for axis chrome.
+ */
+
+/** @type {Readonly<RasterAxisStyle>} */
+export const DEFAULT_AXIS_STYLE = Object.freeze({
+  fontSize: 10,
+  fontFamily: 'system-ui, sans-serif',
+  tickCount: 5,
+  tickLength: 5,
+  tickLabelOffsetX: 7,
+  tickLabelOffsetY: 8,
+  margins: Object.freeze({left: 58, right: 12, top: 10, bottom: 38}),
+});
+
+/**
+ * Clamp ``value`` to the closed interval ``[minimum, maximum]``.
+ *
+ * @param {number} value Input number.
+ * @param {number} minimum Lower bound.
+ * @param {number} maximum Upper bound.
+ * @returns {number} Clamped value.
+ */
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
-function formatTick(value) {
+/**
+ * Choose a 1/2/5×10ⁿ step aiming for about ``tickCount`` ticks in ``[min, max]``.
+ *
+ * Does not expand the data range; callers place ticks inside the existing window.
+ *
+ * @param {number} min Inclusive range minimum (physical units).
+ * @param {number} max Inclusive range maximum (physical units).
+ * @param {number} [tickCount=5] Target tick count (intervals = tickCount - 1).
+ * @returns {number|null} Nice step, or ``null`` when the range is not usable.
+ */
+export function niceStep(min, max, tickCount = 5) {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || !(max > min)) return null;
+  const target = Math.max(2, Math.round(Number(tickCount) || 5));
+  const rough = (max - min) / (target - 1);
+  if (!(rough > 0) || !Number.isFinite(rough)) return null;
+  const exponent = Math.floor(Math.log10(rough));
+  const magnitude = 10 ** exponent;
+  const fraction = rough / magnitude;
+  let niceFraction;
+  if (fraction < 1.5) niceFraction = 1;
+  else if (fraction < 3) niceFraction = 2;
+  else if (fraction < 7) niceFraction = 5;
+  else niceFraction = 10;
+  return niceFraction * magnitude;
+}
+
+/**
+ * Return nice tick values strictly inside ``[min, max]`` (endpoints omitted when ugly).
+ *
+ * @param {number} min Inclusive range minimum (physical units).
+ * @param {number} max Inclusive range maximum (physical units).
+ * @param {number} [tickCount=5] Target tick count for step selection.
+ * @returns {number[]} Increasing tick positions in physical units.
+ */
+export function niceTickValues(min, max, tickCount = 5) {
+  const step = niceStep(min, max, tickCount);
+  if (step == null) return [];
+  const start = Math.ceil(min / step - 1e-12) * step;
+  const ticks = [];
+  const maxTicks = Math.max(2, Math.round(Number(tickCount) || 5)) * 4;
+  for (let index = 0; index < maxTicks; index += 1) {
+    const raw = (Math.round(start / step) + index) * step;
+    const tick = Number(raw.toPrecision(15));
+    if (tick > max + step * 1e-10) break;
+    if (tick >= min - step * 1e-10) ticks.push(tick);
+  }
+  return ticks;
+}
+
+/**
+ * Format a physical tick value for axis labels.
+ *
+ * When ``step`` is provided (nice-tick path), prefers short decimals or integers
+ * matching that step. Extreme magnitudes use scientific notation.
+ *
+ * @param {number} value Physical tick value.
+ * @param {number|null} [step=null] Nice step used to place the tick, when known.
+ * @returns {string} Display label.
+ */
+export function formatTick(value, step = null) {
+  if (!Number.isFinite(value)) return '';
   const magnitude = Math.abs(value);
   if (magnitude > 0 && (magnitude < 0.001 || magnitude >= 10000)) {
     return value.toExponential(2);
   }
+  if (Number.isFinite(step) && step > 0) {
+    if (step >= 1) return String(Math.round(value));
+    const decimals = Math.min(6, Math.max(0, Math.ceil(-Math.log10(step) - 1e-12)));
+    return String(Number(value.toFixed(decimals)));
+  }
   return String(Number(value.toPrecision(5)));
 }
 
+/**
+ * Classify a drag gesture as pending, axis-locked, or region zoom.
+ *
+ * Small motions stay ``pending``. Square images use region zoom; otherwise the
+ * dominant drag axis selects ``x`` or ``y`` zoom.
+ *
+ * @param {{width:number,height:number}} bitmap Active image bitmap.
+ * @param {{x:number,y:number}} start Pointer-down plot coordinates.
+ * @param {{x:number,y:number}} current Current pointer plot coordinates.
+ * @returns {'pending'|'region'|'x'|'y'} Zoom mode for the drag.
+ */
 export function dragZoomMode(bitmap, start, current) {
   const deltaX = current.x - start.x;
   const deltaY = current.y - start.y;
@@ -46,9 +157,23 @@ export function normalizeWheelZoomFactor(value = 1.06) {
   return factor;
 }
 
+/**
+ * Interactive canvas viewport: pan/zoom, slice-wheel hooks, and axis chrome.
+ *
+ * Owns the image bitmap transform, fixed gutters from ``axisStyle.margins``, and
+ * drawing of axis ticks/labels when ``axes`` metadata is present.
+ */
 export class RasterViewport {
-  static margins = {left: 58, right: 12, top: 10, bottom: 38};
+  /** @type {Readonly<{left:number,right:number,top:number,bottom:number}>} */
+  static margins = DEFAULT_AXIS_STYLE.margins;
 
+  /**
+   * @param {HTMLCanvasElement} canvas Image/axis drawing canvas.
+   * @param {(detail:object) => void} [onChange] View-change callback.
+   * @param {HTMLCanvasElement|null} [interactionCanvas=null] Pointer target; defaults to ``canvas``.
+   * @param {(direction:number) => void|null} [onSliceStep=null] Alt-wheel slice step hook.
+   * @param {number} [wheelZoomFactor=1.06] Per-event wheel zoom multiplier.
+   */
   constructor(
     canvas,
     onChange,
@@ -65,6 +190,16 @@ export class RasterViewport {
     this.ctx = canvas.getContext('2d');
     this.bitmap = null;
     this.axes = null;
+    /** @type {RasterAxisStyle} */
+    this.axisStyle = {
+      fontSize: DEFAULT_AXIS_STYLE.fontSize,
+      fontFamily: DEFAULT_AXIS_STYLE.fontFamily,
+      tickCount: DEFAULT_AXIS_STYLE.tickCount,
+      tickLength: DEFAULT_AXIS_STYLE.tickLength,
+      tickLabelOffsetX: DEFAULT_AXIS_STYLE.tickLabelOffsetX,
+      tickLabelOffsetY: DEFAULT_AXIS_STYLE.tickLabelOffsetY,
+      margins: {...DEFAULT_AXIS_STYLE.margins},
+    };
     this.scaleX = 1;
     this.scaleY = 1;
     this.offsetX = 0;
@@ -84,6 +219,7 @@ export class RasterViewport {
     this.bind();
   }
 
+  /** Bind wheel, double-click, and pointer gestures on the interaction canvas. */
   bind() {
     this.interactionCanvas.addEventListener('wheel', event => {
       const point = this.point(event);
@@ -195,6 +331,12 @@ export class RasterViewport {
     });
   }
 
+  /**
+   * Map a pointer event to canvas pixel coordinates.
+   *
+   * @param {PointerEvent|WheelEvent|MouseEvent} event Browser pointer event.
+   * @returns {{x:number,y:number}} Canvas-space point.
+   */
   point(event) {
     const rect = this.interactionCanvas.getBoundingClientRect();
     return {
@@ -203,8 +345,13 @@ export class RasterViewport {
     };
   }
 
+  /**
+   * Return the plot rectangle inside axis gutters.
+   *
+   * @returns {{left:number,top:number,width:number,height:number}} Plot box in canvas pixels.
+   */
   plot() {
-    const margins = RasterViewport.margins;
+    const margins = this.axisStyle.margins;
     return {
       left: margins.left,
       top: margins.top,
@@ -213,12 +360,22 @@ export class RasterViewport {
     };
   }
 
+  /**
+   * @param {{x:number,y:number}} point Canvas point.
+   * @returns {boolean} True when the point lies inside the plot rectangle.
+   */
   containsPlotPoint(point) {
     const plot = this.plot();
     return point.x >= plot.left && point.x <= plot.left + plot.width
       && point.y >= plot.top && point.y <= plot.top + plot.height;
   }
 
+  /**
+   * Clamp a point to the plot rectangle.
+   *
+   * @param {{x:number,y:number}} point Canvas point.
+   * @returns {{x:number,y:number}} Clamped point.
+   */
   clampToPlot(point) {
     const plot = this.plot();
     return {
@@ -227,6 +384,15 @@ export class RasterViewport {
     };
   }
 
+  /**
+   * Install a bitmap and optional axis metadata, optionally resetting the view.
+   *
+   * @param {ImageBitmap|HTMLCanvasElement|HTMLImageElement} bitmap Raster plane.
+   * @param {{x:{label:string,step:number,unit:string},y:{label:string,step:number,unit:string}}|null} axes
+   *   Physical axis descriptors, or ``null`` to hide axes.
+   * @param {boolean} [reset=true] When true, fit the image to the plot (home view).
+   * @returns {void}
+   */
   setImage(bitmap, axes, reset = true) {
     this.bitmap = bitmap;
     this.axes = axes;
@@ -234,16 +400,39 @@ export class RasterViewport {
     this.draw();
   }
 
+  /**
+   * Show or hide axis chrome without changing the bitmap transform.
+   *
+   * @param {{x:{label:string,step:number,unit:string},y:{label:string,step:number,unit:string}}|null} axes
+   *   Axis descriptors, or ``null`` to hide.
+   * @returns {void}
+   */
   setAxes(axes) {
     this.axes = axes;
     this.draw();
   }
 
+  /**
+   * Apply canvas theme colors.
+   *
+   * @param {{canvasBackground:string,axisLine:string,axisText:string}} theme Theme tokens.
+   * @param {boolean} [redraw=true] When true, redraw immediately.
+   * @returns {void}
+   */
   setTheme(theme, redraw = true) {
     this.theme = theme;
     if (redraw) this.draw();
   }
 
+  /**
+   * Zoom/pan so the visible X extent matches a physical range.
+   *
+   * @param {number} minimum Physical X minimum.
+   * @param {number} maximum Physical X maximum.
+   * @param {number} step Physical units per display-X pixel.
+   * @returns {{minimum:number,maximum:number}} Applied clamped range.
+   * @throws {Error} When no bitmap is loaded or the range is invalid.
+   */
   setPhysicalXRange(minimum, maximum, step) {
     if (!this.bitmap) throw new Error('Raster image is unavailable');
     if (!Number.isFinite(minimum) || !Number.isFinite(maximum) || minimum >= maximum) {
@@ -266,6 +455,15 @@ export class RasterViewport {
     return {minimum: clampedMinimum, maximum: clampedMaximum};
   }
 
+  /**
+   * Zoom/pan so the visible Y extent matches a physical range.
+   *
+   * @param {number} minimum Physical Y minimum.
+   * @param {number} maximum Physical Y maximum.
+   * @param {number} step Physical units per display-Y pixel.
+   * @returns {{minimum:number,maximum:number}} Applied clamped range.
+   * @throws {Error} When no bitmap is loaded or the range is invalid.
+   */
   setPhysicalYRange(minimum, maximum, step) {
     if (!this.bitmap) throw new Error('Raster image is unavailable');
     if (!Number.isFinite(minimum) || !Number.isFinite(maximum) || minimum >= maximum) {
@@ -288,6 +486,19 @@ export class RasterViewport {
     return {minimum: clampedMinimum, maximum: clampedMaximum};
   }
 
+  /**
+   * Zoom/pan so both axes match the given physical ranges in one draw.
+   *
+   * @param {number} xMinimum Physical X minimum.
+   * @param {number} xMaximum Physical X maximum.
+   * @param {number} xStep Physical units per display-X pixel.
+   * @param {number} yMinimum Physical Y minimum.
+   * @param {number} yMaximum Physical Y maximum.
+   * @param {number} yStep Physical units per display-Y pixel.
+   * @returns {{x:{minimum:number,maximum:number},y:{minimum:number,maximum:number}}}
+   *   Applied clamped ranges.
+   * @throws {Error} When no bitmap is loaded or a range is invalid.
+   */
   setPhysicalRange(xMinimum, xMaximum, xStep, yMinimum, yMaximum, yStep) {
     if (!this.bitmap) throw new Error('Raster image is unavailable');
     if (!Number.isFinite(xMinimum) || !Number.isFinite(xMaximum) || xMinimum >= xMaximum) {
@@ -327,11 +538,23 @@ export class RasterViewport {
     };
   }
 
+  /**
+   * Attach an interactive overlay (for example ROIs) drawn above the image.
+   *
+   * @param {{draw:() => void}} overlay Overlay object.
+   * @returns {void}
+   */
   setOverlay(overlay) {
     this.overlay = overlay;
     this.overlay.draw();
   }
 
+  /**
+   * Attach a plot-space overlay (for example XY traces) drawn above axes.
+   *
+   * @param {{canvas:HTMLCanvasElement,draw:() => void}} overlay Overlay with its own canvas.
+   * @returns {void}
+   */
   setPlotOverlay(overlay) {
     this.plotOverlay = overlay;
     this.plotOverlay.canvas.width = this.canvas.width;
@@ -339,6 +562,7 @@ export class RasterViewport {
     this.plotOverlay.draw();
   }
 
+  /** Resize canvases to the wrap element; refit when still at home. */
   resize() {
     const width = Math.max(1, this.wrap.clientWidth);
     const height = Math.max(1, this.wrap.clientHeight);
@@ -358,11 +582,15 @@ export class RasterViewport {
     this.draw();
   }
 
+  /**
+   * @returns {boolean} True when the transform matches the last home/fit state.
+   */
   atHome() {
     return this.home && ['scaleX', 'scaleY', 'offsetX', 'offsetY']
       .every(key => Math.abs(this[key] - this.home[key]) < 1e-6);
   }
 
+  /** Fit the bitmap into the plot and record that transform as home. */
   fit() {
     if (!this.bitmap) return;
     const plot = this.plot();
@@ -389,12 +617,20 @@ export class RasterViewport {
     };
   }
 
+  /** Restore the home transform and redraw. */
   reset() {
     if (!this.home) return;
     Object.assign(this, this.home);
     this.draw();
   }
 
+  /**
+   * Zoom to a rectangular selection in canvas space.
+   *
+   * @param {{x:number,y:number}} start Selection start.
+   * @param {{x:number,y:number}} end Selection end.
+   * @returns {void}
+   */
   zoomRegion(start, end) {
     const plot = this.plot();
     const selection = this.selectionRect(start, end);
@@ -415,6 +651,14 @@ export class RasterViewport {
     this.offsetY = plot.top - y0 * this.scaleY;
   }
 
+  /**
+   * Zoom only the X or Y axis to a drag selection.
+   *
+   * @param {'x'|'y'} axis Axis to zoom.
+   * @param {{x:number,y:number}} start Drag start.
+   * @param {{x:number,y:number}} end Drag end.
+   * @returns {void}
+   */
   zoomAxis(axis, start, end) {
     const plot = this.plot();
     if (axis === 'x') {
@@ -438,12 +682,14 @@ export class RasterViewport {
     this.offsetY = plot.top - worldMinimum * nextScale;
   }
 
+  /** Update CSS classes reflecting the active drag-zoom mode. */
   updateDragClass() {
     this.wrap.classList.toggle('is-region-zooming', this.drag?.zoomMode === 'region');
     this.wrap.classList.toggle('is-axis-x-zooming', this.drag?.zoomMode === 'x');
     this.wrap.classList.toggle('is-axis-y-zooming', this.drag?.zoomMode === 'y');
   }
 
+  /** Clear pan/zoom drag CSS classes. */
   clearDragClasses() {
     this.wrap.classList.remove(
       'is-panning',
@@ -453,6 +699,13 @@ export class RasterViewport {
     );
   }
 
+  /**
+   * Build an axis-aligned (or square-constrained) selection rectangle.
+   *
+   * @param {{x:number,y:number}} start Drag start.
+   * @param {{x:number,y:number}} end Drag end.
+   * @returns {{left:number,top:number,width:number,height:number}} Selection box.
+   */
   selectionRect(start, end) {
     let endX = end.x;
     let endY = end.y;
@@ -475,6 +728,12 @@ export class RasterViewport {
     };
   }
 
+  /**
+   * Intersection of the transformed image with the plot rectangle.
+   *
+   * @returns {{left:number,top:number,width:number,height:number}|null}
+   *   Visible image box in canvas pixels, or ``null`` when empty.
+   */
   visibleImageRect() {
     if (!this.bitmap) return null;
     const plot = this.plot();
@@ -490,6 +749,11 @@ export class RasterViewport {
     return {left, top, width: right - left, height: bottom - top};
   }
 
+  /**
+   * Visible image extent in display-pixel coordinates (pre-physical step).
+   *
+   * @returns {{x:number[],y:number[]}} Inclusive ``[min, max]`` ranges for X and Y.
+   */
   visibleRange() {
     const plot = this.plot();
     const imageLeft = this.offsetX;
@@ -512,6 +776,13 @@ export class RasterViewport {
     };
   }
 
+  /**
+   * Map display-pixel coordinates to canvas pixels.
+   *
+   * @param {number} x Display X (column-like, origin bottom-left of image).
+   * @param {number} y Display Y.
+   * @returns {{x:number,y:number}} Canvas point.
+   */
   displayToCanvas(x, y) {
     return {
       x: this.offsetX + x * this.scaleX,
@@ -519,6 +790,13 @@ export class RasterViewport {
     };
   }
 
+  /**
+   * Map canvas pixels to display-pixel coordinates.
+   *
+   * @param {number} x Canvas X.
+   * @param {number} y Canvas Y.
+   * @returns {{x:number,y:number}} Display point.
+   */
   canvasToDisplay(x, y) {
     return {
       x: (x - this.offsetX) / this.scaleX,
@@ -526,16 +804,37 @@ export class RasterViewport {
     };
   }
 
+  /**
+   * Map source row/col to canvas pixels via display orientation.
+   *
+   * @param {number} row Source row.
+   * @param {number} col Source column.
+   * @returns {{x:number,y:number}} Canvas point.
+   */
   sourceToCanvas(row, col) {
     const display = sourceToDisplay(row, col);
     return this.displayToCanvas(display.x, display.y);
   }
 
+  /**
+   * Map canvas pixels to source row/col via display orientation.
+   *
+   * @param {number} x Canvas X.
+   * @param {number} y Canvas Y.
+   * @returns {{row:number,col:number}} Source indices.
+   */
   canvasToSource(x, y) {
     const display = this.canvasToDisplay(x, y);
     return displayToSource(display.x, display.y);
   }
 
+  /**
+   * Notify the host of a view-range change.
+   *
+   * @param {string} cause Gesture or API cause string.
+   * @param {boolean} final True when the gesture has settled.
+   * @returns {void}
+   */
   emit(cause, final) {
     if (!this.bitmap) return;
     const imageRange = this.visibleRange();
@@ -547,6 +846,11 @@ export class RasterViewport {
     });
   }
 
+  /**
+   * Redraw background, clipped image, drag guide, axes, and overlays.
+   *
+   * @returns {void}
+   */
   draw() {
     const context = this.ctx;
     context.setTransform(1, 0, 0, 1, 0, 0);
@@ -569,6 +873,11 @@ export class RasterViewport {
     this.overlay?.draw();
   }
 
+  /**
+   * Draw the rubber-band overlay while a region or axis drag-zoom is active.
+   *
+   * @returns {void}
+   */
   drawRegionGuide() {
     if (!this.drag || this.drag.pan || this.drag.zoomMode === 'pending') return;
     const selection = this.selectionRect(this.drag.start, this.drag.last);
@@ -605,48 +914,76 @@ export class RasterViewport {
     );
   }
 
+  /**
+   * Stroke the axis box, nice ticks/labels, and axis titles when axes are set.
+   *
+   * Tick positions use a 1/2/5×10ⁿ step inside the visible physical range; the
+   * zoomed data extent is not expanded to pretty outer limits.
+   *
+   * @returns {void}
+   */
   drawAxes() {
     if (!this.axes) return;
     const context = this.ctx;
     const axisRect = this.visibleImageRect();
     if (!axisRect) return;
+    const style = this.axisStyle;
     const range = this.visibleRange();
     const xStart = range.x[0] * this.axes.x.step;
     const xEnd = range.x[1] * this.axes.x.step;
     const yStart = range.y[0] * this.axes.y.step;
     const yEnd = range.y[1] * this.axes.y.step;
+    const xStep = niceStep(xStart, xEnd, style.tickCount);
+    const yStep = niceStep(yStart, yEnd, style.tickCount);
+    const xTicks = niceTickValues(xStart, xEnd, style.tickCount);
+    const yTicks = niceTickValues(yStart, yEnd, style.tickCount);
+    const xSpan = xEnd - xStart;
+    const ySpan = yEnd - yStart;
     context.save();
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.strokeStyle = this.theme.axisLine;
     context.fillStyle = this.theme.axisText;
     context.lineWidth = 1;
-    context.font = '10px system-ui, sans-serif';
+    context.font = `${style.fontSize}px ${style.fontFamily}`;
     context.strokeRect(
       axisRect.left + 0.5,
       axisRect.top + 0.5,
       Math.max(0, axisRect.width - 1),
       Math.max(0, axisRect.height - 1),
     );
-    for (let index = 0; index < TICK_COUNT; index += 1) {
-      const fraction = index / (TICK_COUNT - 1);
-      const x = axisRect.left + fraction * axisRect.width;
-      const y = axisRect.top + axisRect.height - fraction * axisRect.height;
-      context.beginPath();
-      context.moveTo(x, axisRect.top + axisRect.height);
-      context.lineTo(x, axisRect.top + axisRect.height + 5);
-      context.moveTo(axisRect.left - 5, y);
-      context.lineTo(axisRect.left, y);
-      context.stroke();
-      context.textAlign = 'center';
-      context.textBaseline = 'top';
-      context.fillText(
-        formatTick(xStart + fraction * (xEnd - xStart)),
-        x,
-        axisRect.top + axisRect.height + 7,
-      );
-      context.textAlign = 'right';
-      context.textBaseline = 'middle';
-      context.fillText(formatTick(yStart + fraction * (yEnd - yStart)), axisRect.left - 8, y);
+    if (xSpan > 0) {
+      for (const value of xTicks) {
+        const fraction = (value - xStart) / xSpan;
+        const x = axisRect.left + fraction * axisRect.width;
+        context.beginPath();
+        context.moveTo(x, axisRect.top + axisRect.height);
+        context.lineTo(x, axisRect.top + axisRect.height + style.tickLength);
+        context.stroke();
+        context.textAlign = 'center';
+        context.textBaseline = 'top';
+        context.fillText(
+          formatTick(value, xStep),
+          x,
+          axisRect.top + axisRect.height + style.tickLabelOffsetX,
+        );
+      }
+    }
+    if (ySpan > 0) {
+      for (const value of yTicks) {
+        const fraction = (value - yStart) / ySpan;
+        const y = axisRect.top + axisRect.height - fraction * axisRect.height;
+        context.beginPath();
+        context.moveTo(axisRect.left - style.tickLength, y);
+        context.lineTo(axisRect.left, y);
+        context.stroke();
+        context.textAlign = 'right';
+        context.textBaseline = 'middle';
+        context.fillText(
+          formatTick(value, yStep),
+          axisRect.left - style.tickLabelOffsetY,
+          y,
+        );
+      }
     }
     const xUnit = this.axes.x.unit ? ` (${this.axes.x.unit})` : '';
     const yUnit = this.axes.y.unit ? ` (${this.axes.y.unit})` : '';
@@ -665,6 +1002,7 @@ export class RasterViewport {
     context.restore();
   }
 
+  /** Disconnect resize observation and clear pending wheel timers. */
   destroy() {
     this.resizeObserver.disconnect();
     clearTimeout(this.wheelEnd);

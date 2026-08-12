@@ -132,6 +132,8 @@ shapes. If unsure, cite the source of truth and confirm before implementing.
 - Prefer KISS and DRY without speculative shared modules.
 - Use type annotations and Google-style docstrings (`Args`, `Returns`,
   `Raises`) for public APIs.
+- Browser modules under `**/web/**/*.js`: use JSDoc on exports and non-trivial
+  methods you edit (see workspace rule `jsdoc-nicewidgets-web`).
 - Fail clearly on invalid input rather than silently guessing.
 - Preserve existing architecture and naming unless the task is a deliberate
   refactor.
