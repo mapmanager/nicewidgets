@@ -768,6 +768,114 @@ test('selectChannel does not rebuild single-mode panes when unchanged', () => {
   assert.equal(viewer.selected, '1');
 });
 
+test('captureViewportTransform returns null without a painted pane', () => {
+  const viewer = Object.create(RasterViewer.prototype);
+  viewer.viewports = [];
+  assert.equal(viewer.captureViewportTransform(), null);
+  viewer.viewports = [{bitmap: null}];
+  assert.equal(viewer.captureViewportTransform(), null);
+});
+
+test('render preserves pan/zoom across layout rebuilds', () => {
+  const home = {scaleX: 2, scaleY: 2, offsetX: 10, offsetY: 20};
+  const prior = {
+    bitmap: {width: 100, height: 50},
+    scaleX: 4,
+    scaleY: 3,
+    offsetX: -30,
+    offsetY: -40,
+    home: {...home},
+  };
+  const created = [];
+  const viewer = Object.create(RasterViewer.prototype);
+  Object.assign(viewer, {
+    viewports: [prior],
+    rangePopover: {close: () => {}},
+    paneControls: ['stale'],
+    tSlider: {},
+    tOutput: {},
+    zSlider: {},
+    zOutput: {},
+    stage: {className: ''},
+    mode: 'composite',
+    channels: [{id: '0'}, {id: '1'}],
+    selected: '0',
+    destroyViews() {
+      this.viewports = [];
+    },
+    addPane(group, showSliceControl, resetView) {
+      created.push({
+        groupIds: group.map(channel => channel.id),
+        showSliceControl,
+        resetView,
+      });
+      const viewport = {
+        scaleX: 1,
+        scaleY: 1,
+        offsetX: 0,
+        offsetY: 0,
+        home: null,
+        draws: 0,
+        draw() {
+          this.draws += 1;
+        },
+      };
+      this.viewports.push(viewport);
+    },
+  });
+
+  viewer.render();
+
+  assert.equal(created.length, 1);
+  assert.equal(created[0].resetView, false);
+  assert.deepEqual(created[0].groupIds, ['0', '1']);
+  assert.equal(viewer.viewports[0].scaleX, 4);
+  assert.equal(viewer.viewports[0].scaleY, 3);
+  assert.equal(viewer.viewports[0].offsetX, -30);
+  assert.equal(viewer.viewports[0].offsetY, -40);
+  assert.deepEqual(viewer.viewports[0].home, home);
+  assert.equal(viewer.viewports[0].draws, 1);
+  assert.equal(viewer.paneControls.length, 0);
+  assert.equal(viewer.tSlider, null);
+});
+
+test('render fits on first paint when no prior transform exists', () => {
+  const created = [];
+  const viewer = Object.create(RasterViewer.prototype);
+  Object.assign(viewer, {
+    viewports: [],
+    rangePopover: {close: () => {}},
+    paneControls: [],
+    tSlider: null,
+    tOutput: null,
+    zSlider: null,
+    zOutput: null,
+    stage: {className: ''},
+    mode: 'single',
+    channels: [{id: '0'}, {id: '1'}],
+    selected: '1',
+    destroyViews() {
+      this.viewports = [];
+    },
+    addPane(group, showSliceControl, resetView) {
+      created.push({
+        groupIds: group.map(channel => channel.id),
+        resetView,
+      });
+      this.viewports.push({id: 'new'});
+    },
+    restoreViewportTransform() {
+      throw new Error('first paint must not restore a transform');
+    },
+  });
+
+  viewer.render();
+
+  assert.equal(created.length, 1);
+  assert.equal(created[0].resetView, true);
+  assert.deepEqual(created[0].groupIds, ['1']);
+});
+
 test('ROI toolbar keeps idle controls visible while editing', () => {
   const select = {hidden: false, disabled: false};
   const add = {hidden: false, disabled: false};

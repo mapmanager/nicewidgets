@@ -1477,6 +1477,46 @@ export class RasterViewer {
   }
 
   /**
+   * Snapshot pan/zoom from the first pane for layout rebuilds.
+   *
+   * Hotkeys and toolbar layout changes call ``render()``, which destroys
+   * canvases. Without a snapshot, ``addPane`` → ``setImage(..., true)`` would
+   * ``fit()`` and wipe the user's zoom.
+   *
+   * @returns {{scaleX:number,scaleY:number,offsetX:number,offsetY:number,home:object|null}|null}
+   *   Transform to restore, or ``null`` when there is no prior pane (first paint).
+   */
+  captureViewportTransform() {
+    const viewport = this.viewports[0];
+    if (!viewport?.bitmap) return null;
+    return {
+      scaleX: viewport.scaleX,
+      scaleY: viewport.scaleY,
+      offsetX: viewport.offsetX,
+      offsetY: viewport.offsetY,
+      home: viewport.home ? {...viewport.home} : null,
+    };
+  }
+
+  /**
+   * Apply a captured transform to every current pane and redraw.
+   *
+   * @param {{scaleX:number,scaleY:number,offsetX:number,offsetY:number,home:object|null}} transform
+   *   Snapshot from ``captureViewportTransform``.
+   * @returns {void}
+   */
+  restoreViewportTransform(transform) {
+    for (const viewport of this.viewports) {
+      viewport.scaleX = transform.scaleX;
+      viewport.scaleY = transform.scaleY;
+      viewport.offsetX = transform.offsetX;
+      viewport.offsetY = transform.offsetY;
+      viewport.home = transform.home ? {...transform.home} : viewport.home;
+      viewport.draw();
+    }
+  }
+
+  /**
    * Replace all committed ROIs from an authoritative caller snapshot.
    *
    * This method is silent and never emits a user-originated ROI callback.
@@ -1800,6 +1840,10 @@ export class RasterViewer {
   }
 
   render() {
+    // Preserve pan/zoom across layout/channel pane rebuilds (1/2/3 hotkeys,
+    // toolbar radios, selectChannel in single mode). First paint has no
+    // snapshot and keeps addPane's fit() behavior.
+    const transform = this.captureViewportTransform();
     this.destroyViews();
     this.rangePopover.close();
     this.paneControls = [];
@@ -1820,8 +1864,9 @@ export class RasterViewer {
     const slicePaneIndex = sliceControlPaneIndex(this.mode, groups.length);
     groups.forEach((group, index) => {
       const showSliceControl = index === slicePaneIndex;
-      this.addPane(group, showSliceControl);
+      this.addPane(group, showSliceControl, transform == null);
     });
+    if (transform) this.restoreViewportTransform(transform);
   }
 
   redraw(cause = 'render') {
@@ -1843,7 +1888,7 @@ export class RasterViewer {
     });
   }
 
-  addPane(group, showSliceControl = false) {
+  addPane(group, showSliceControl = false, resetView = true) {
     const pane = document.createElement('section');
     pane.className = 'rv-pane';
     const header = document.createElement('div');
@@ -1943,7 +1988,8 @@ export class RasterViewer {
     viewport.group = group;
     this.viewports.push(viewport);
     const image = renderBitmap(this.displayWidth, this.displayHeight, group);
-    viewport.setImage(image, this.showAxes ? this.displayAxes : null, true);
+    // ``resetView`` is false when ``render()`` will restore a captured transform.
+    viewport.setImage(image, this.showAxes ? this.displayAxes : null, resetView);
     const plotOverlay = new XYPlotOverlay(
       plotCanvas,
       viewport,

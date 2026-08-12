@@ -7,7 +7,7 @@
  * does not. Versioning the CSS URL (same as the JS entry) keeps app and web
  * chrome in sync without divergent code paths.
  */
-const RASTER_VIEWER_ASSETS_VERSION = 'axis-plotly-align-1';
+const RASTER_VIEWER_ASSETS_VERSION = 'layout-preserve-zoom-1';
 
 const stylesheetPromises = new Map();
 
