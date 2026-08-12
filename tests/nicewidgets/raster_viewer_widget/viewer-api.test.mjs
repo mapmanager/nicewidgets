@@ -15,6 +15,7 @@ import {
   RoiOverlay,
 } from '../../../src/nicewidgets/raster_viewer_widget/web/roi-overlay.js';
 import {
+  DEFAULT_AXIS_STYLE,
   dragZoomMode,
   formatTick,
   niceStep,
@@ -22,6 +23,17 @@ import {
   normalizeWheelZoomFactor,
   RasterViewport,
 } from '../../../src/nicewidgets/raster_viewer_widget/web/viewport.js';
+
+test('default axis style matches Plotly-like font and stack L/R gutters', () => {
+  assert.equal(DEFAULT_AXIS_STYLE.fontSize, 11);
+  assert.equal(DEFAULT_AXIS_STYLE.fontFamily, '"Open Sans", verdana, arial, sans-serif');
+  assert.deepEqual(DEFAULT_AXIS_STYLE.margins, {
+    left: 50,
+    right: 14,
+    top: 10,
+    bottom: 40,
+  });
+});
 
 test('niceStep picks 1/2/5×10ⁿ spacing for a typical physical window', () => {
   assert.equal(niceStep(3.2, 47.8, 5), 10);

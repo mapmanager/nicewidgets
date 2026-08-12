@@ -13,6 +13,11 @@ const AXIS_LOCK_PIXELS = 8;
  * Kept on the viewport instance as ``axisStyle`` so a future Python/Vue API can
  * overwrite the same fields without changing ``drawAxes`` call sites.
  *
+ * Font size/family track NiceWidgets ``PlotlyPlotWidget`` axis text (11px and
+ * Plotly's Open Sans stack; canvas falls back if Open Sans is not loaded).
+ * Left/right gutters are empirical for vertical stack plot-area alignment with
+ * Plotly widgets — not a literal copy of Plotly ``layout.margin``.
+ *
  * @typedef {object} RasterAxisStyle
  * @property {number} fontSize Axis tick and title font size in CSS pixels.
  * @property {string} fontFamily CSS ``font-family`` stack for axis text.
@@ -26,13 +31,13 @@ const AXIS_LOCK_PIXELS = 8;
 
 /** @type {Readonly<RasterAxisStyle>} */
 export const DEFAULT_AXIS_STYLE = Object.freeze({
-  fontSize: 10,
-  fontFamily: 'system-ui, sans-serif',
+  fontSize: 11,
+  fontFamily: '"Open Sans", verdana, arial, sans-serif',
   tickCount: 5,
   tickLength: 5,
   tickLabelOffsetX: 7,
   tickLabelOffsetY: 8,
-  margins: Object.freeze({left: 58, right: 12, top: 10, bottom: 38}),
+  margins: Object.freeze({left: 50, right: 14, top: 10, bottom: 40}),
 });
 
 /**
