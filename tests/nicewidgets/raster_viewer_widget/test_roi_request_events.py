@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from nicegui import events
 
 from nicewidgets.raster_viewer_widget.events import (
@@ -15,7 +17,7 @@ from nicewidgets.raster_viewer_widget.roi import RoiType
 
 def _nicegui_event(payload: dict[str, object]) -> events.GenericEventArguments:
     """Build a minimal NiceGUI custom-event wrapper."""
-    return events.GenericEventArguments(sender=None, client=None, args=payload)
+    return cast(events.GenericEventArguments, type("Event", (), {"args": payload})())
 
 
 def test_roi_add_requested_defaults_to_rect() -> None:
