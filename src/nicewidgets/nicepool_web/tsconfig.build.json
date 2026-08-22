@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/core/**/*.ts",
+    "src/plots/**/*.ts",
+    "src/vue/**/*.ts",
+    "src/vue/**/*.vue",
+    "src/element/**/*.ts",
+    "src/public-api.ts",
+    "src/env.d.ts"
+  ],
+  "exclude": ["src/app/**", "tests/**"],
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist-lib/types",
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.build.tsbuildinfo"
+  }
+}

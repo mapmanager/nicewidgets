@@ -1,0 +1,39 @@
+{
+  "name": "@nicewidgets/nicepool-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "types": "./dist-lib/types/public-api.d.ts",
+  "module": "./dist-lib/nicepool-web.js",
+  "exports": {
+    ".": {
+      "types": "./dist-lib/types/public-api.d.ts",
+      "import": "./dist-lib/nicepool-web.js"
+    },
+    "./register": "./dist-element/nicepool-element.js",
+    "./style.css": "./dist-lib/nicepool-web.css"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && npm run build:app && npm run build:lib && npm run build:element",
+    "build:app": "vite build",
+    "build:lib": "vite build --config vite.lib.config.ts && npm run build:types",
+    "build:types": "vue-tsc --project tsconfig.build.json --declaration --emitDeclarationOnly --noEmit false",
+    "build:element": "vite build --config vite.element.config.ts",
+    "test": "vitest run",
+    "typecheck": "vue-tsc --build --force"
+  },
+  "dependencies": {
+    "plotly.js-dist-min": "^3.7.0",
+    "vue": "^3.5.41"
+  },
+  "devDependencies": {
+    "@types/plotly.js": "^3.0.13",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "@vue/tsconfig": "^0.9.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10",
+    "vue-tsc": "^3.3.9"
+  }
+}

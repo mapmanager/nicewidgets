@@ -1,0 +1,64 @@
+:host, .nicepool-shell { font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+.nicepool-theme-dark { --np-text: #e5e7eb; --np-muted: #9ca3af; --np-shell: #111827; --np-controls: #1f2937; --np-plot: #111827; --np-border: #4b5563; --np-input: #111827; --np-input-border: #6b7280; --np-divider: #374151; --np-grip: #9ca3af; --np-hover: #1e3a5f; --np-active: #60a5fa; --np-error-text: #fecaca; --np-error-bg: #7f1d1d; }
+.nicepool-theme-light { --np-text: #172033; --np-muted: #64748b; --np-shell: #f8fafc; --np-controls: #eef2f7; --np-plot: #ffffff; --np-border: #cbd5e1; --np-input: #ffffff; --np-input-border: #94a3b8; --np-divider: #dbe3ed; --np-grip: #64748b; --np-hover: #bfdbfe; --np-active: #2563eb; --np-error-text: #991b1b; --np-error-bg: #fee2e2; }
+.nicepool-shell { --nicepool-control-font-size: 11px; --nicepool-controls-width: 290px; --nicepool-controls-height: 627px; --nicepool-plot-height: 620px; display: grid; grid-template-columns: var(--nicepool-controls-width) 7px minmax(0, 1fr); width: 100%; color: var(--np-text); background: var(--np-shell); border: 1px solid var(--np-border); border-radius: 10px; overflow: hidden; color-scheme: dark; }
+.nicepool-theme-light { color-scheme: light; }
+.nicepool-controls { display: flex; flex-direction: column; gap: 6px; min-width: 0; height: var(--nicepool-controls-height); align-self: start; box-sizing: border-box; padding: 8px; background: var(--np-controls); overflow: auto; font-size: var(--nicepool-control-font-size); }
+.nicepool-controls-collapsed { padding: 0; overflow: hidden; }
+.nicepool-controls label { display: grid; grid-template-columns: minmax(82px, 0.8fr) minmax(0, 1.2fr); align-items: center; gap: 6px; min-height: 24px; }
+.nicepool-controls select, .nicepool-controls button, .nicepool-controls input { min-width: 0; min-height: 24px; box-sizing: border-box; border: 1px solid var(--np-input-border); border-radius: 4px; background: var(--np-input); padding: 2px 4px; color: inherit; font: inherit; }
+.nicepool-controls button:hover { background: var(--np-hover); }
+.nicepool-controls input[type="checkbox"] { justify-self: start; width: 16px; min-height: 16px; margin: 0; padding: 0; }
+.nicepool-control-disabled { opacity: 0.55; }
+.nicepool-control-group { display: contents; }
+.nicepool-inline-option { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; gap: 6px; min-width: 0; }
+.nicepool-inline-option > input[type="number"], .nicepool-inline-option > select { width: 100%; }
+.nicepool-controls fieldset { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--np-border); border-radius: 5px; padding: 6px; }
+.nicepool-controls legend { font-size: inherit; }
+.nicepool-display-options { border: 1px solid var(--np-border); border-radius: 6px; background: var(--np-shell); }
+.nicepool-display-options summary { display: flex; align-items: center; gap: 5px; padding: 5px 6px; cursor: pointer; font-weight: 650; list-style: none; }
+.nicepool-display-options summary::-webkit-details-marker { display: none; }
+.nicepool-display-options summary:hover, .nicepool-display-options summary:focus-visible { background: var(--np-hover); outline: none; }
+.nicepool-display-options-panel { display: flex; flex-direction: column; gap: 4px; padding: 3px 6px 6px; border-top: 1px solid var(--np-border); }
+.nicepool-control-row { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.nicepool-control-row > label { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.nicepool-plot-region { min-width: 0; }
+.nicepool-main { width: 100%; min-width: 0; height: var(--nicepool-plot-height); position: relative; background: var(--np-plot); }
+.nicepool-grid { display: grid; gap: 4px; background: var(--np-border); }
+.nicepool-layout-1x1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+.nicepool-layout-1x2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+.nicepool-layout-2x1 { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+.nicepool-layout-2x2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.nicepool-plot-cell { position: relative; min-width: 0; min-height: 0; background: var(--np-plot); outline: 2px solid transparent; outline-offset: -2px; }
+.nicepool-plot-active { outline-color: var(--np-active); }
+.nicepool-plot-active::after { content: ''; position: absolute; z-index: 5; inset: 0; box-sizing: border-box; border: 3px solid var(--np-active); pointer-events: none; }
+.nicepool-plot-number { position: absolute; z-index: 2; top: 5px; left: 7px; color: var(--np-muted); font-size: 11px; font-weight: 700; pointer-events: none; }
+.nicepool-plot { position: absolute; inset: 0; }
+.nicepool-theme-dark .modebar { background: rgba(17, 24, 39, 0.88) !important; }
+.nicepool-theme-dark .modebar-btn path { fill: #d1d5db !important; }
+.nicepool-error { margin: 20px; padding: 12px; color: var(--np-error-text); background: var(--np-error-bg); border-radius: 6px; }
+.nicepool-empty, .nicepool-status { color: var(--np-muted); }
+.nicepool-empty { margin: 24px; }
+.nicepool-status { margin: 0; }
+.nicepool-splitter { position: relative; background: var(--np-divider); touch-action: none; user-select: none; }
+.nicepool-splitter::after { content: ''; position: absolute; border-radius: 999px; background: var(--np-grip); }
+.nicepool-splitter:hover, .nicepool-splitter:focus-visible { background: var(--np-hover); outline: none; }
+.nicepool-splitter-vertical { width: 7px; cursor: col-resize; }
+.nicepool-splitter-vertical::after { inset: 35% 2px; }
+.nicepool-splitter-horizontal { width: 100%; height: 7px; cursor: row-resize; }
+.nicepool-splitter-horizontal::after { inset: 2px 40%; }
+.nicepool-summary-panel { background: var(--np-controls); border-top: 1px solid var(--np-border); color: var(--np-text); font-size: var(--nicepool-control-font-size); }
+.nicepool-summary-panel > summary { padding: 5px 8px; cursor: pointer; user-select: none; }
+.nicepool-summary-content { padding: 0 8px 8px; }
+.nicepool-summary-actions { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; color: var(--np-muted); }
+.nicepool-summary-actions button { min-height: 24px; border: 1px solid var(--np-input-border); border-radius: 4px; padding: 2px 6px; background: var(--np-input); color: inherit; font: inherit; }
+.nicepool-summary-actions label { display: inline-flex; align-items: center; gap: 4px; }
+.nicepool-summary-actions input { margin: 0; }
+.nicepool-summary-table-scroll { max-height: 220px; overflow: auto; }
+.nicepool-summary-table-scroll h3 { margin: 7px 0 3px; font-size: inherit; }
+.nicepool-summary-panel table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+.nicepool-summary-panel th, .nicepool-summary-panel td { border: 1px solid var(--np-border); padding: 2px 5px; text-align: right; }
+.nicepool-summary-panel th:first-child, .nicepool-summary-panel th:nth-child(2), .nicepool-summary-panel td:first-child, .nicepool-summary-panel td:nth-child(2) { text-align: left; }
+.nicepool-summary-panel thead th { position: sticky; top: 0; background: var(--np-controls); }
+body.nicepool-resizing { cursor: grabbing; user-select: none; }
+@media (max-width: 700px) { .nicepool-shell { grid-template-columns: 1fr; } .nicepool-controls { height: auto; max-height: 440px; border-bottom: 1px solid #cbd5e1; } .nicepool-splitter-vertical { display: none; } }

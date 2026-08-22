@@ -56,7 +56,6 @@ from .events import (
     RasterViewChangeEvent,
 )
 
-logger = get_logger(__name__)
 from .models import RasterChannelDisplay
 from .numpy_source import NumPyRasterSource
 from .roi import Roi
@@ -64,6 +63,8 @@ from .roi_api import RoiApi
 from .source import RasterDataSource
 from .source_registry import REGISTRY, ROUTE_PREFIX, ensure_routes_registered
 from .xy_plot_api import XYPlotApi
+
+logger = get_logger(__name__)
 
 JAVASCRIPT_TIMEOUT_SECONDS = 5.0
 WEB_ASSETS = Path(__file__).resolve().parent / "web"

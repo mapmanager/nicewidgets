@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Generated builds and test output
+dist/
+dist-lib/
+dist-element/
+coverage/
+playwright-report/
+test-results/
+
+# TypeScript and tool caches
+*.tsbuildinfo
+.eslintcache
+.vite/
+
+# Python caches used by the optional NiceGUI host
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Local environment files; keep an example file if one is added
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

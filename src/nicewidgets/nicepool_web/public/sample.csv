@@ -1,0 +1,13 @@
+pool_row_id,accept,channel,roi_id,condition,time,amplitude,velocity,duration
+row-0001,yes,green,roi-1,control,0.0,8.2,-2.1,20.4
+row-0002,yes,green,roi-2,treated,0.1,10.8,3.0,22.1
+row-0003,yes,green,roi-3,recovery,0.2,9.0,-0.8,24.8
+row-0004,yes,red,roi-1,control,0.3,8.9,1.4,21.3
+row-0005,no,red,roi-2,treated,0.4,11.6,32.0,26.0
+row-0006,yes,red,roi-3,recovery,0.5,10.1,-3.7,23.6
+row-0007,yes,green,roi-1,control,0.6,7.8,,19.8
+row-0008,yes,green,roi-2,treated,0.7,10.2,2.8,25.2
+row-0009,yes,green,roi-3,recovery,0.8,9.5,-1.6,22.9
+row-0010,yes,red,roi-1,control,0.9,8.6,0.3,20.7
+row-0011,yes,red,roi-2,treated,1.0,12.0,-28.0,27.1
+row-0012,yes,red,roi-3,recovery,1.1,9.8,2.6,24.1

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NicePool Custom Element</title>
+    <style>body { margin: 24px; background: #e2e8f0; }</style>
+  </head>
+  <body>
+    <nice-pool></nice-pool>
+    <script type="module">
+      import { registerNicePoolElement } from './src/element/register.ts'
+      import { sampleDataset } from './src/app/sampleData.ts'
+
+      registerNicePoolElement()
+      document.querySelector('nice-pool').setData(sampleDataset(300))
+    </script>
+  </body>
+</html>
